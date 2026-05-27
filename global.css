@@ -1,3 +1,43 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+    --background: 253 253 253;
+    --foreground: 26 26 26;
+
+    --card: 255 255 255;
+    --card-foreground: 26 26 26;
+
+    --muted: 244 244 245;
+    --muted-foreground: 113 113 122;
+
+    --primary: 37 99 235;
+    --primary-foreground: 255 255 255;
+
+    --border: 228 228 231;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: 13 13 13;
+        --foreground: 215 208 208;
+
+        --card: 24 24 27;
+        --card-foreground: 244 244 245;
+
+        --muted: 39 39 42;
+        --muted-foreground: 161 161 170;
+
+        --primary: 96 165 250;
+        --primary-foreground: 13 13 13;
+
+        --border: 39 39 42;
+    }
+}
+
+@layer base {
+    * {
+        @apply transition-colors duration-500;
+    }
+}
