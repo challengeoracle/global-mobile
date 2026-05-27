@@ -3,6 +3,12 @@ import NetInfo, { NetInfoStateType } from "@react-native-community/netinfo";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
+const COLOR_BLUE = "#2563eb";
+const COLOR_RED = "#dc2626";
+const COLOR_PURPLE = "#7c3aed";
+const COLOR_DEFAULT = "#60a5fa";
+const COLOR_INACTIVE = "#a1a1aa";
+
 type ConnectionStatus = {
     isConnected: boolean;
     type: NetInfoStateType | "unknown";
@@ -10,6 +16,8 @@ type ConnectionStatus = {
 
 export default function HomeScreen() {
     const [offlineModeEnabled, setOfflineModeEnabled] = useState(false);
+    const [showOfflineHelp, setShowOfflineHelp] = useState(false);
+
     const [connection, setConnection] = useState<ConnectionStatus>({
         isConnected: false,
         type: "unknown",
@@ -30,46 +38,43 @@ export default function HomeScreen() {
         if (!connection.isConnected) {
             return {
                 label: "Sem Conexão",
-                description: "Operando sem rede",
-                icon: "alert-circle-outline" as const,
-                color: "#ef4444",
-                background: "bg-red-500/10",
+                description: "Não é possível solicitar chave.",
+                icon: "cloud-offline-outline" as const,
+                color: COLOR_RED,
             };
         }
 
         if (connection.type === "wifi") {
             return {
                 label: "WiFi",
-                description: "Rede estável",
+                description: "Pronto para autorizar.",
                 icon: "cloud-done-outline" as const,
-                color: "#38bdf8",
-                background: "bg-sky-500/10",
+                color: COLOR_BLUE,
             };
         }
 
         if (connection.type === "cellular") {
             return {
                 label: "Rede Móvel",
-                description: "Dados móveis ativos",
+                description: "Pronto para autorizar.",
                 icon: "phone-portrait-outline" as const,
-                color: "#a78bfa",
-                background: "bg-violet-500/10",
+                color: COLOR_PURPLE,
             };
         }
 
         return {
             label: "Online",
-            description: "Conexão disponível",
+            description: "Conexão disponível.",
             icon: "radio-outline" as const,
-            color: "#22c55e",
-            background: "bg-emerald-500/10",
+            color: COLOR_BLUE,
         };
     }, [connection]);
 
-    const canActivateOfflineMode = connection.isConnected;
+    const canPrepareOfflineSession = connection.isConnected;
+    const sessionColor = offlineModeEnabled ? COLOR_BLUE : COLOR_RED;
 
     function handleOfflineModePress() {
-        if (!offlineModeEnabled && !canActivateOfflineMode) return;
+        if (!offlineModeEnabled && !canPrepareOfflineSession) return;
 
         setOfflineModeEnabled((current) => !current);
     }
@@ -78,108 +83,128 @@ export default function HomeScreen() {
         <ScrollView className="flex-1 bg-background">
             <View className="px-6 pb-10 pt-14">
                 <View className="mb-8">
-                    <Text className="mb-2 text-sm font-semibold uppercase tracking-[3px] text-primary">Painel do vendedor</Text>
+                    <Text className="mb-2 text-sm font-semibold uppercase tracking-[3px] text-primary">Terminal Seguro</Text>
 
                     <Text className="mb-3 text-4xl font-bold text-foreground">Olá, Célia</Text>
 
-                    <Text className="text-base leading-7 text-muted-foreground">Prepare sua loja para continuar vendendo mesmo se a conexão cair.</Text>
+                    <Text className="text-base leading-7 text-muted-foreground">Autorize seu dispositivo para registrar intenções de venda com segurança, mesmo sem internet.</Text>
                 </View>
 
                 <View className="mb-6 flex-row gap-3">
-                    <View className="flex-1 rounded-3xl border border-border bg-card p-4">
-                        <View className="mb-4 flex-row items-center justify-between">
-                            <View className={`h-12 w-12 items-center justify-center rounded-2xl ${connectionInfo.background}`}>
-                                <Ionicons name={connectionInfo.icon} size={24} color={connectionInfo.color} />
-                            </View>
+                    <StatusCard icon={connectionInfo.icon} label="Conexão" value={connectionInfo.label} description={connectionInfo.description} iconColor={connectionInfo.color} />
 
-                            <View className="h-3 w-3 rounded-full" style={{ backgroundColor: connectionInfo.color }} />
-                        </View>
-
-                        <Text className="text-sm text-muted-foreground">Conexão atual</Text>
-
-                        <Text className="mt-1 text-xl font-bold text-card-foreground">{connectionInfo.label}</Text>
-
-                        <Text className="mt-1 text-xs text-muted-foreground">{connectionInfo.description}</Text>
-                    </View>
-
-                    <View className="flex-1 rounded-3xl border border-border bg-card p-4">
-                        <View className="mb-4 flex-row items-center justify-between">
-                            <View className={`h-12 w-12 items-center justify-center rounded-2xl ${offlineModeEnabled ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
-                                <Ionicons name={offlineModeEnabled ? "shield-checkmark-outline" : "shield-outline"} size={24} color={offlineModeEnabled ? "#22c55e" : "#f59e0b"} />
-                            </View>
-
-                            <View
-                                className="h-3 w-3 rounded-full"
-                                style={{
-                                    backgroundColor: offlineModeEnabled ? "#22c55e" : "#f59e0b",
-                                }}
-                            />
-                        </View>
-
-                        <Text className="text-sm text-muted-foreground">Modo offline</Text>
-
-                        <Text className="mt-1 text-xl font-bold text-card-foreground">{offlineModeEnabled ? "Ativo" : "Inativo"}</Text>
-
-                        <Text className="mt-1 text-xs text-muted-foreground">{offlineModeEnabled ? "Loja protegida" : "Precisa de rede"}</Text>
-                    </View>
+                    <StatusCard icon={offlineModeEnabled ? "shield-checkmark-outline" : "shield-outline"} label="Sessão Offline" value={offlineModeEnabled ? "Autorizada" : "Inativa"} description={offlineModeEnabled ? "Vendas protegidas." : "Ative online."} iconColor={sessionColor} />
                 </View>
 
                 <View className="mb-6 rounded-3xl border border-border bg-card p-5">
                     <View className="mb-5">
-                        <Text className="text-lg font-bold text-card-foreground">Preparar modo offline</Text>
+                        <Text className="text-lg font-bold text-card-foreground">Sessão Offline Segura</Text>
 
-                        <Text className="mt-2 text-sm leading-6 text-muted-foreground">Ative com internet para liberar o token de validação e deixar a loja pronta.</Text>
+                        <Text className="mt-2 text-sm leading-6 text-muted-foreground">O servidor gera uma chave temporária online. Depois, o app assina e salva suas vendas até a internet voltar para liquidação.</Text>
                     </View>
 
-                    <Pressable disabled={!offlineModeEnabled && !canActivateOfflineMode} onPress={handleOfflineModePress} className={`rounded-2xl px-5 py-4 active:opacity-80 ${!offlineModeEnabled && !canActivateOfflineMode ? "bg-muted opacity-60" : "bg-primary"}`}>
-                        <Text className={`text-center text-base font-bold ${!offlineModeEnabled && !canActivateOfflineMode ? "text-muted-foreground" : "text-primary-foreground"}`}>{offlineModeEnabled ? "Desativar modo offline" : canActivateOfflineMode ? "Ativar modo offline" : "Conecte-se para ativar"}</Text>
+                    <Pressable disabled={!offlineModeEnabled && !canPrepareOfflineSession} onPress={handleOfflineModePress} className={`rounded-2xl px-5 py-4 active:opacity-80 ${!offlineModeEnabled && !canPrepareOfflineSession ? "bg-muted opacity-60" : "bg-primary"}`}>
+                        <Text className={`text-center text-base font-bold ${!offlineModeEnabled && !canPrepareOfflineSession ? "text-muted-foreground" : "text-primary-foreground"}`}>{offlineModeEnabled ? "Encerrar sessão offline" : canPrepareOfflineSession ? "Autorizar sessão offline" : "Conecte-se para autorizar"}</Text>
                     </Pressable>
+
+                    <Pressable onPress={() => setShowOfflineHelp((current) => !current)} className="mt-4 flex-row items-center justify-center gap-2 active:opacity-80">
+                        <Text className="text-sm font-semibold text-primary">Como funciona a auditoria?</Text>
+
+                        <Ionicons name={showOfflineHelp ? "chevron-up" : "chevron-down"} size={16} color={COLOR_DEFAULT} />
+                    </Pressable>
+
+                    {showOfflineHelp && (
+                        <View className="mt-4 rounded-2xl border border-border bg-background p-4">
+                            <View className="gap-3">
+                                <HelpItem icon="key-outline" title="1. Autorização" description="O servidor libera uma permissão temporária exclusiva para este aparelho." />
+
+                                <HelpItem icon="document-lock-outline" title="2. Assinatura Local" description="A venda é registrada como pendente e protegida por criptografia." />
+
+                                <HelpItem icon="checkmark-done-circle-outline" title="3. Validação" description="Ao reconectar, o sistema confere a integridade da fila e liquida o pagamento." />
+                            </View>
+                        </View>
+                    )}
                 </View>
 
                 <View className="mb-6 flex-row gap-3">
-                    <InfoCard label="Hoje" value="5 vendas" />
-                    <InfoCard label="Aguardando envio" value="2 vendas" highlight />
-                </View>
+                    <InfoCard label="Vendas aprovadas" value="5 transações" />
 
-                <View className="mb-6 rounded-3xl border border-border bg-card p-5">
-                    <Text className="mb-4 text-lg font-bold text-card-foreground">Como funciona</Text>
-
-                    <View className="gap-4">
-                        <Step icon="key-outline" title="1. Validação inicial" description="Ative com WiFi ou Rede Móvel para gerar o token." />
-
-                        <Step icon="qr-code-outline" title="2. Venda por QR Code" description="Pedidos continuam sendo registrados no aparelho." />
-
-                        <Step icon="cloud-upload-outline" title="3. Enviar depois" description="Quando a internet voltar, as vendas pendentes são enviadas." />
-                    </View>
+                    <InfoCard label="Fila de validação" value="2 pendentes" highlight />
                 </View>
 
                 <View className="mb-6 rounded-3xl border border-border bg-card p-5">
                     <Text className="mb-4 text-lg font-bold text-card-foreground">Ações rápidas</Text>
 
                     <View className="gap-3">
-                        <ActionButton icon="qr-code-outline" title="QR Code da loja" description="Mostrar catálogo para o cliente." />
+                        <ActionButton icon="cart-outline" title="Registrar pedido offline" description="Criar nova venda na sessão atual." />
 
-                        <ActionButton icon="scan-outline" title="Ler pedido do cliente" description="Confirmar uma venda por QR Code." />
+                        <ActionButton icon="list-outline" title="Auditoria local" description="Verificar integridade da fila no dispositivo." />
 
-                        <ActionButton icon="cloud-upload-outline" title="Enviar vendas pendentes" description="Atualizar dados quando a internet voltar." />
+                        <ActionButton icon="cloud-upload-outline" title="Sincronizar lote" description="Enviar vendas assinadas para o servidor." />
                     </View>
                 </View>
 
                 <View className="rounded-3xl border border-border bg-card p-5">
                     <View className="flex-row items-center justify-between">
                         <View>
-                            <Text className="text-sm text-muted-foreground">Saldo simulado</Text>
+                            <Text className="text-sm text-muted-foreground">Saldo liquidado</Text>
 
                             <Text className="mt-1 text-2xl font-bold text-card-foreground">R$ 128,40</Text>
                         </View>
 
                         <View className="h-11 w-11 items-center justify-center rounded-2xl bg-muted">
-                            <Ionicons name="wallet-outline" size={21} color="#60a5fa" />
+                            <Ionicons name="wallet-outline" size={21} color={COLOR_DEFAULT} />
                         </View>
                     </View>
                 </View>
             </View>
         </ScrollView>
+    );
+}
+
+type StatusCardProps = {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value: string;
+    description: string;
+    iconColor?: string;
+};
+
+function StatusCard({ icon, label, value, description, iconColor = COLOR_DEFAULT }: StatusCardProps) {
+    return (
+        <View className="flex-1 rounded-3xl border border-border bg-card p-4">
+            <View className="mb-4 h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                <Ionicons name={icon} size={24} color={iconColor} />
+            </View>
+
+            <Text className="text-sm text-muted-foreground">{label}</Text>
+
+            <Text className="mt-1 text-lg font-bold text-card-foreground">{value}</Text>
+
+            <Text className="mt-1 text-xs leading-5 text-muted-foreground">{description}</Text>
+        </View>
+    );
+}
+
+type HelpItemProps = {
+    icon: keyof typeof Ionicons.glyphMap;
+    title: string;
+    description: string;
+};
+
+function HelpItem({ icon, title, description }: HelpItemProps) {
+    return (
+        <View className="flex-row gap-3">
+            <View className="h-9 w-9 items-center justify-center rounded-xl bg-muted">
+                <Ionicons name={icon} size={18} color={COLOR_DEFAULT} />
+            </View>
+
+            <View className="flex-1">
+                <Text className="text-sm font-bold text-foreground">{title}</Text>
+
+                <Text className="mt-1 text-xs leading-5 text-muted-foreground">{description}</Text>
+            </View>
+        </View>
     );
 }
 
@@ -199,27 +224,6 @@ function InfoCard({ label, value, highlight }: InfoCardProps) {
     );
 }
 
-type StepProps = {
-    icon: keyof typeof Ionicons.glyphMap;
-    title: string;
-    description: string;
-};
-
-function Step({ icon, title, description }: StepProps) {
-    return (
-        <View className="flex-row gap-3">
-            <View className="h-10 w-10 items-center justify-center rounded-2xl bg-muted">
-                <Ionicons name={icon} size={20} color="#60a5fa" />
-            </View>
-
-            <View className="flex-1">
-                <Text className="text-sm font-bold text-card-foreground">{title}</Text>
-                <Text className="mt-1 text-xs leading-5 text-muted-foreground">{description}</Text>
-            </View>
-        </View>
-    );
-}
-
 type ActionButtonProps = {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
@@ -231,7 +235,7 @@ function ActionButton({ icon, title, description }: ActionButtonProps) {
         <Pressable className="rounded-2xl border border-border bg-background p-4 active:opacity-80">
             <View className="flex-row items-center gap-3">
                 <View className="h-10 w-10 items-center justify-center rounded-2xl bg-muted">
-                    <Ionicons name={icon} size={20} color="#60a5fa" />
+                    <Ionicons name={icon} size={20} color={COLOR_DEFAULT} />
                 </View>
 
                 <View className="flex-1">
@@ -240,7 +244,7 @@ function ActionButton({ icon, title, description }: ActionButtonProps) {
                     <Text className="mt-1 text-xs leading-5 text-muted-foreground">{description}</Text>
                 </View>
 
-                <Ionicons name="chevron-forward" size={18} color="#71717a" />
+                <Ionicons name="chevron-forward" size={18} color={COLOR_INACTIVE} />
             </View>
         </Pressable>
     );
