@@ -247,6 +247,8 @@ export function useCatalogScreen() {
         refreshing: catalog.refreshing,
         error: catalog.error,
         lastSyncAt: catalog.lastSyncAt,
+        catalogStoreId: catalog.catalogStoreId,
+        loadLocalCatalog: catalog.loadLocalCatalog,
         selectedCategoryId,
         setSelectedCategoryId,
         selectedProduct,

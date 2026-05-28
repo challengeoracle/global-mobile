@@ -119,3 +119,22 @@ export type OrderSyncResponse = {
     syncedAt: string;
     results: OrderSyncItemResponse[];
 };
+
+export type CatalogQrPayload = {
+    type: "OFFPAY_CATALOG";
+    version: 1;
+    storeId: string;
+    generatedAt: string;
+    categories: {
+        id: string;
+        name: string;
+        description?: string | null;
+        products: {
+            id: string;
+            name: string;
+            description?: string | null;
+            price: number;
+            stockQuantity: number;
+        }[];
+    }[];
+};
