@@ -1,50 +1,31 @@
-# Welcome to your Expo app 👋
+# OffPay
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+O OffPay é uma solução mobile desenvolvida para garantir a continuidade operacional de pequenos negócios em cenários de crise, como quedas de energia, falhas de internet ou indisponibilidade de operadoras. A plataforma permite registrar vendas, manter o catálogo de produtos e gerenciar pagamentos de forma offline, com sincronização automática assim que a conexão é restabelecida.
 
-## Get started
+## Visão Geral
 
-1. Install dependencies
+O projeto foca em resiliência digital, oferecendo uma arquitetura "offline-first" que permite ao comerciante operar sem interrupções. Quando a internet retorna, os dados armazenados localmente são sincronizados com o backend para reconciliação financeira e processamento de pagamentos.
 
-   ```bash
-   npm install
-   ```
+## Setup do Projeto
 
-2. Start the app
+Para configurar o ambiente de desenvolvimento localmente, siga os passos abaixo:
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+1. Clone o repositório para sua máquina local.
+2. Acesse a pasta do projeto via terminal.
+3. Instale as dependências necessárias utilizando o gerenciador de pacotes de sua preferência:
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+1. Configure as variáveis de ambiente necessárias. Crie um arquivo .env na raiz do projeto e defina a URL da sua API:
 
-## Learn more
+```env
+EXPO_PUBLIC_API_URL=sua_url_aqui
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+5. Para iniciar o projeto em uma porta específica (exemplo: 8079), utilize o comando configurado no package.json:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npm start -- --port 8079
+```
