@@ -1,45 +1,47 @@
+import { useAuth } from "@/src/contexts/auth-context";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { useColorScheme } from "nativewind";
+import { ActivityIndicator, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
     const { colorScheme } = useColorScheme();
     const insets = useSafeAreaInsets();
+    const { loading, isAuthenticated } = useAuth();
 
     const isDark = colorScheme === "dark";
+
+    if (loading) {
+        return (
+            <View className="flex-1 items-center justify-center bg-background">
+                <ActivityIndicator />
+            </View>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <Redirect href="/login" />;
+    }
 
     return (
         <Tabs
             screenOptions={{
                 headerShown: false,
-
-                sceneStyle: {
-                    backgroundColor: isDark ? "#0d0d0d" : "#fdfdfd",
-                },
-
+                tabBarActiveTintColor: isDark ? "#93c5fd" : "#2563eb",
+                tabBarInactiveTintColor: isDark ? "#64748b" : "#94a3b8",
                 tabBarStyle: {
-                    backgroundColor: isDark ? "#18181b" : "#ffffff",
-                    borderTopColor: isDark ? "#27272a" : "#e4e4e7",
-                    height: 64 + insets.bottom,
+                    height: 62 + insets.bottom,
+                    paddingBottom: insets.bottom + 8,
                     paddingTop: 8,
-                    paddingBottom: Math.max(insets.bottom, 10),
                 },
-
-                tabBarLabelStyle: {
-                    fontSize: 12,
-                    fontWeight: "600",
-                },
-
-                tabBarActiveTintColor: isDark ? "#60a5fa" : "#2563eb",
-                tabBarInactiveTintColor: isDark ? "#a1a1aa" : "#71717a",
             }}
         >
             <Tabs.Screen
                 name="home"
                 options={{
                     title: "Início",
-                    tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
                 }}
             />
 
@@ -47,15 +49,15 @@ export default function TabLayout() {
                 name="explore"
                 options={{
                     title: "Operação",
-                    tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "analytics" : "analytics-outline"} size={size} color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="qr-code-outline" color={color} size={size} />,
                 }}
             />
 
             <Tabs.Screen
                 name="settings"
                 options={{
-                    title: "Config",
-                    tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "settings" : "settings-outline"} size={size} color={color} />,
+                    title: "Conta",
+                    tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" color={color} size={size} />,
                 }}
             />
         </Tabs>

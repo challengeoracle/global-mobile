@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { useEffect, useRef } from "react";
+import { AuthProvider } from "../contexts/auth-context";
 
 export default function RootLayout() {
     const { colorScheme, setColorScheme } = useColorScheme();
@@ -19,17 +20,15 @@ export default function RootLayout() {
     const isDark = colorScheme === "dark";
 
     return (
-        <>
-            <Stack
-                screenOptions={{
-                    headerShown: false,
-                    contentStyle: {
-                        backgroundColor: isDark ? "#0d0d0d" : "#fdfdfd",
-                    },
-                }}
-            />
+        <AuthProvider>
+            <StatusBar style={isDark ? "light" : "dark"} />
 
-            <StatusBar style={isDark ? "light" : "dark"} backgroundColor={isDark ? "#0d0d0d" : "#fdfdfd"} />
-        </>
+            <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="signup" />
+                <Stack.Screen name="(tabs)" />
+            </Stack>
+        </AuthProvider>
     );
 }

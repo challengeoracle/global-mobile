@@ -1,50 +1,74 @@
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "expo-router";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { Text, View } from "react-native";
+
+import { AuthHeader } from "../components/auth/auth-header";
+
+import { FormInput } from "../components/form/form-input";
+import { FormPasswordInput } from "../components/form/form-password-input";
+
+import { Button } from "../components/ui/button";
+import { Screen } from "../components/ui/screen";
+
+import { useAuth } from "../contexts/auth-context";
+
+import { LoginFormData, loginSchema } from "../schemas/auth-schema";
 
 export default function LoginScreen() {
+    const { login } = useAuth();
+
+    const [serverError, setServerError] = useState("");
+
+    const {
+        control,
+        handleSubmit,
+        formState: { isSubmitting },
+    } = useForm<LoginFormData>({
+        resolver: zodResolver(loginSchema),
+
+        defaultValues: {
+            email: "",
+            password: "",
+        },
+    });
+
+    async function onSubmit(data: LoginFormData) {
+        try {
+            setServerError("");
+
+            await login(data);
+        } catch (err) {
+            setServerError(err instanceof Error ? err.message : "Não foi possível entrar.");
+        }
+    }
+
     return (
-        <View className="flex-1 bg-background px-6 pb-10 pt-16">
-            <View className="flex-1 justify-center">
-                <View className="mb-10">
-                    <Text className="mb-2 text-sm font-semibold uppercase tracking-[3px] text-primary">SIGNAL</Text>
+        <Screen>
+            <View className="w-full">
+                <AuthHeader title="Entrar" description="Entre na sua conta para iniciar a operação." />
 
-                    <Text className="mb-4 text-4xl font-bold text-foreground">Entrar</Text>
+                <View className="gap-5">
+                    <FormInput control={control} name="email" label="Email" placeholder="email@exemplo.com" keyboardType="email-address" />
 
-                    <Text className="text-base leading-7 text-muted-foreground">Acesse o app com suas credenciais de acesso.</Text>
-                </View>
+                    <FormPasswordInput control={control} name="password" label="Senha" placeholder="Sua senha" />
 
-                <View className="rounded-3xl border border-border bg-card p-5">
-                    <View className="mb-4">
-                        <Text className="mb-2 text-sm font-semibold text-card-foreground">Email</Text>
+                    {serverError ? (
+                        <View className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4">
+                            <Text className="text-sm font-medium leading-6 text-red-400">{serverError}</Text>
+                        </View>
+                    ) : null}
 
-                        <TextInput placeholder="vendedor@signal.com" placeholderTextColor="#71717a" keyboardType="email-address" autoCapitalize="none" className="rounded-2xl border border-border bg-background px-4 py-4 text-foreground" />
+                    <View className="pt-2">
+                        <Button title="Entrar" onPress={handleSubmit(onSubmit)} loading={isSubmitting} />
                     </View>
 
-                    <View className="mb-3">
-                        <Text className="mb-2 text-sm font-semibold text-card-foreground">Senha</Text>
-
-                        <TextInput placeholder="Digite sua senha" placeholderTextColor="#71717a" secureTextEntry className="rounded-2xl border border-border bg-background px-4 py-4 text-foreground" />
-                    </View>
-
-                    <Pressable className="mb-6 self-end active:opacity-80">
-                        <Text className="text-sm font-semibold text-primary">Esqueci minha senha</Text>
-                    </Pressable>
-
-                    <Link href="/home" asChild>
-                        <Pressable className="rounded-2xl bg-primary px-5 py-4 active:opacity-80">
-                            <Text className="text-center text-base font-bold text-primary-foreground">Entrar no painel</Text>
-                        </Pressable>
+                    <Link href={"/signup" as any}>
+                        <Text className="mt-2 text-center text-sm font-bold uppercase tracking-[2px] text-primary">Criar conta</Text>
                     </Link>
                 </View>
-
-                <Link href="/" asChild>
-                    <Pressable className="mt-4 rounded-2xl border border-border bg-background px-5 py-4 active:opacity-80">
-                        <Text className="text-center text-base font-bold text-foreground">Voltar</Text>
-                    </Pressable>
-                </Link>
             </View>
-
-            <Text className="text-center text-xs leading-5 text-muted-foreground">Login visual para MVP. Sem autenticação real nesta etapa.</Text>
-        </View>
+        </Screen>
     );
 }
