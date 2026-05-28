@@ -1,5 +1,9 @@
+import { clearOfflineTokens, regenerateDeviceId } from "@/src/lib/secure-storage";
+import { updateSellerDevice } from "@/src/services/auth-service";
+
 import { useColorScheme } from "nativewind";
-import { ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, ScrollView, Text, View } from "react-native";
 
 import { AccountCard } from "@/src/components/settings/account-card";
 import { SettingsItem } from "@/src/components/settings/settings-item";
@@ -9,10 +13,49 @@ import { PageHeader } from "@/src/components/ui/page-header";
 import { useAuth } from "@/src/contexts/auth-context";
 
 export default function SettingsScreen() {
-    const { user, logout } = useAuth();
+    const { user, logout, refreshUser } = useAuth();
     const { colorScheme, toggleColorScheme } = useColorScheme();
 
+    const [updatingDevice, setUpdatingDevice] = useState(false);
+
     const isDark = colorScheme === "dark";
+    const isSeller = user?.role === "SELLER";
+
+    async function handleUpdateDevice() {
+        if (!isSeller) {
+            return;
+        }
+
+        Alert.alert("Atualizar dispositivo", "Este aparelho será definido como o novo terminal autorizado. A sessão offline atual será removida e você precisará ativar o modo offline novamente.", [
+            {
+                text: "Cancelar",
+                style: "cancel",
+            },
+            {
+                text: "Atualizar",
+                style: "destructive",
+                onPress: async () => {
+                    try {
+                        setUpdatingDevice(true);
+
+                        const newDeviceId = await regenerateDeviceId();
+
+                        await updateSellerDevice(newDeviceId);
+
+                        await clearOfflineTokens();
+
+                        await refreshUser();
+
+                        Alert.alert("Dispositivo atualizado", "Este aparelho agora é o terminal autorizado da sua conta.");
+                    } catch (err) {
+                        Alert.alert("Erro ao atualizar", err instanceof Error ? err.message : "Não foi possível atualizar o dispositivo.");
+                    } finally {
+                        setUpdatingDevice(false);
+                    }
+                },
+            },
+        ]);
+    }
 
     return (
         <ScrollView className="flex-1 bg-background" showsVerticalScrollIndicator={false}>
@@ -30,7 +73,15 @@ export default function SettingsScreen() {
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="shield-checkmark-outline" title="Sessão offline" description={user?.role === "SELLER" ? "Autorização do terminal" : "Autorização do cliente"} />
+                    <SettingsItem icon="shield-checkmark-outline" title="Sessão offline" description={isSeller ? "Autorização do terminal" : "Autorização do cliente"} />
+
+                    {isSeller ? (
+                        <>
+                            <SettingsDivider />
+
+                            <SettingsItem icon="phone-portrait-outline" title="Dispositivo autorizado" description={updatingDevice ? "Atualizando terminal..." : "Definir este aparelho como terminal"} onPress={handleUpdateDevice} />
+                        </>
+                    ) : null}
                 </SettingsSection>
 
                 <SettingsSection>

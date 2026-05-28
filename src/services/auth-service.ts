@@ -53,3 +53,13 @@ export function getCustomerOfflineStatus() {
         auth: true,
     });
 }
+
+export function updateSellerDevice(deviceId: string) {
+    return apiRequest<DeviceStatusResponse>("/device/me", {
+        method: "PATCH",
+        auth: true,
+        body: {
+            deviceId,
+        },
+    });
+}
