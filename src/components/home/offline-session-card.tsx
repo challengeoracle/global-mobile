@@ -24,7 +24,7 @@ export function OfflineSessionCard({ title, description, activateLabel, renewLab
 
             <View className="mt-6 gap-3">
                 <Pressable className={`h-14 items-center justify-center rounded-2xl active:opacity-90 ${buttonDisabled ? "bg-muted opacity-70" : "bg-primary"}`} onPress={onActivate} disabled={buttonDisabled}>
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text className={`text-sm font-bold uppercase tracking-[2px] ${buttonDisabled ? "text-muted-foreground" : "text-primary-foreground"}`}>{!isConnected ? "Conecte-se para autorizar" : offlineEnabled ? renewLabel : activateLabel}</Text>}
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text className={`text-sm font-bold uppercase tracking-[2px] ${buttonDisabled ? "text-muted-foreground" : "text-primary-foreground"}`}>{!isConnected ? "Conecte-se para autorizar" : offlineEnabled ? "Renovar autorização" : "Ativar offline"}</Text>}
                 </Pressable>
 
                 <Pressable className="h-14 items-center justify-center rounded-2xl border border-border bg-card active:opacity-90" onPress={onCheck} disabled={loading}>
