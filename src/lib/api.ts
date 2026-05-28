@@ -1,9 +1,14 @@
 import { getToken } from "./secure-storage";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+const AUTH_API_URL = process.env.EXPO_PUBLIC_AUTH_API_URL;
+const SALES_API_URL = process.env.EXPO_PUBLIC_SALES_API_URL;
 
-if (!API_URL) {
-    console.warn("EXPO_PUBLIC_API_URL não configurada.");
+if (!AUTH_API_URL) {
+    console.warn("EXPO_PUBLIC_AUTH_API_URL não configurada.");
+}
+
+if (!SALES_API_URL) {
+    console.warn("EXPO_PUBLIC_SALES_API_URL não configurada.");
 }
 
 type RequestOptions = {
@@ -12,7 +17,11 @@ type RequestOptions = {
     auth?: boolean;
 };
 
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(baseUrl: string | undefined, path: string, options: RequestOptions = {}): Promise<T> {
+    if (!baseUrl) {
+        throw new Error("URL da API não configurada.");
+    }
+
     const headers: Record<string, string> = {
         "Content-Type": "application/json",
     };
@@ -20,19 +29,30 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (options.auth) {
         const token = await getToken();
 
-        if (token) {
-            headers.Authorization = `Bearer ${token}`;
+        if (!token) {
+            throw new Error("Usuário não autenticado.");
         }
+
+        headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_URL}${path}`, {
+    const response = await fetch(`${baseUrl}${path}`, {
         method: options.method ?? "GET",
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
     });
 
     const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
+
+    let data: any = null;
+
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch {
+            data = text;
+        }
+    }
 
     if (!response.ok) {
         const message = data?.message || data?.error || "Não foi possível concluir a operação.";
@@ -41,4 +61,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
 
     return data as T;
+}
+
+export function authRequest<T>(path: string, options: RequestOptions = {}) {
+    return request<T>(AUTH_API_URL, path, options);
+}
+
+export function salesRequest<T>(path: string, options: RequestOptions = {}) {
+    return request<T>(SALES_API_URL, path, options);
 }

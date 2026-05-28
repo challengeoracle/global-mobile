@@ -54,3 +54,15 @@ export async function getOrCreateDeviceId() {
 export async function clearSession() {
     await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user), SecureStore.deleteItemAsync(KEYS.sellerOfflineToken), SecureStore.deleteItemAsync(KEYS.sellerOfflineExpiresAt), SecureStore.deleteItemAsync(KEYS.customerOfflineToken), SecureStore.deleteItemAsync(KEYS.customerOfflineExpiresAt)]);
 }
+
+export async function regenerateDeviceId() {
+    const generated = `offpay-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    await SecureStore.setItemAsync(KEYS.deviceId, generated);
+
+    return generated;
+}
+
+export async function clearOfflineTokens() {
+    await Promise.all([SecureStore.deleteItemAsync(KEYS.sellerOfflineToken), SecureStore.deleteItemAsync(KEYS.sellerOfflineExpiresAt), SecureStore.deleteItemAsync(KEYS.customerOfflineToken), SecureStore.deleteItemAsync(KEYS.customerOfflineExpiresAt)]);
+}
