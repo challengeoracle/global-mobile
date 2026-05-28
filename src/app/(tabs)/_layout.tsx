@@ -1,13 +1,26 @@
 import { useAuth } from "@/src/contexts/auth-context";
+
 import { Ionicons } from "@expo/vector-icons";
+
 import { Redirect, Tabs } from "expo-router";
+
 import { useColorScheme } from "nativewind";
+
 import { ActivityIndicator, View } from "react-native";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const LIGHT_ACTIVE = "#dc2626";
+const LIGHT_INACTIVE = "#a1a1aa";
+
+const DARK_ACTIVE = "#ef4444";
+const DARK_INACTIVE = "#52525b";
 
 export default function TabLayout() {
     const { colorScheme } = useColorScheme();
+
     const insets = useSafeAreaInsets();
+
     const { loading, isAuthenticated } = useAuth();
 
     const isDark = colorScheme === "dark";
@@ -15,7 +28,7 @@ export default function TabLayout() {
     if (loading) {
         return (
             <View className="flex-1 items-center justify-center bg-background">
-                <ActivityIndicator />
+                <ActivityIndicator color={isDark ? DARK_ACTIVE : LIGHT_ACTIVE} size="large" />
             </View>
         );
     }
@@ -28,12 +41,34 @@ export default function TabLayout() {
         <Tabs
             screenOptions={{
                 headerShown: false,
-                tabBarActiveTintColor: isDark ? "#93c5fd" : "#2563eb",
-                tabBarInactiveTintColor: isDark ? "#64748b" : "#94a3b8",
+
+                tabBarActiveTintColor: isDark ? DARK_ACTIVE : LIGHT_ACTIVE,
+
+                tabBarInactiveTintColor: isDark ? DARK_INACTIVE : LIGHT_INACTIVE,
+
+                tabBarLabelStyle: {
+                    fontSize: 11,
+                    fontWeight: "700",
+                    letterSpacing: 1,
+                    textTransform: "uppercase",
+                },
+
                 tabBarStyle: {
-                    height: 62 + insets.bottom,
-                    paddingBottom: insets.bottom + 8,
-                    paddingTop: 8,
+                    height: 68 + insets.bottom,
+
+                    paddingBottom: insets.bottom + 10,
+
+                    paddingTop: 10,
+
+                    backgroundColor: isDark ? "#09090b" : "#ffffff",
+
+                    borderTopWidth: 1,
+
+                    borderTopColor: isDark ? "#27272a" : "#e4e4e7",
+                },
+
+                tabBarItemStyle: {
+                    paddingVertical: 4,
                 },
             }}
         >
@@ -41,6 +76,7 @@ export default function TabLayout() {
                 name="home"
                 options={{
                     title: "Início",
+
                     tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
                 }}
             />
@@ -49,6 +85,7 @@ export default function TabLayout() {
                 name="explore"
                 options={{
                     title: "Operação",
+
                     tabBarIcon: ({ color, size }) => <Ionicons name="qr-code-outline" color={color} size={size} />,
                 }}
             />
@@ -57,6 +94,7 @@ export default function TabLayout() {
                 name="settings"
                 options={{
                     title: "Conta",
+
                     tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" color={color} size={size} />,
                 }}
             />
