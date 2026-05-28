@@ -5,10 +5,21 @@ import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { useEffect, useRef } from "react";
 import { AuthProvider } from "../contexts/auth-context";
+import { initDatabase } from "../database/database";
+import { runMigrations } from "../database/migrations";
 
 export default function RootLayout() {
     const { colorScheme, setColorScheme } = useColorScheme();
     const hasSetInitialTheme = useRef(false);
+
+    useEffect(() => {
+        async function prepareDatabase() {
+            await initDatabase();
+            await runMigrations();
+        }
+
+        prepareDatabase();
+    }, []);
 
     useEffect(() => {
         if (hasSetInitialTheme.current) return;
