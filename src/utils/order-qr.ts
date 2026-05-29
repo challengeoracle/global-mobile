@@ -12,6 +12,23 @@ export type OrderQrPayload = {
     items: OrderItemRequest[];
 };
 
+export type OrderConfirmationQrPayload = {
+    type: "OFFPAY_ORDER_CONFIRMATION";
+    version: 1;
+    localOrderId: string;
+    storeId: string;
+    customerId?: string | null;
+    sellerId?: string | null;
+    sellerDeviceId?: string | null;
+    remoteOrderId?: string | null;
+    confirmedAt: string;
+    totalAmount: number;
+    orderStatus: string;
+    paymentStatus: string;
+    syncStatus: string;
+    items: OrderItemRequest[];
+};
+
 type CompactOrderQrPayload = {
     t: "OO";
     v: 1;
@@ -21,6 +38,27 @@ type CompactOrderQrPayload = {
     d?: string | null;
     at: string;
     total: number;
+    items: {
+        p: string;
+        q: number;
+        u?: number;
+    }[];
+};
+
+type CompactOrderConfirmationQrPayload = {
+    t: "OC";
+    v: 1;
+    id: string;
+    s: string;
+    c?: string | null;
+    seller?: string | null;
+    sd?: string | null;
+    rid?: string | null;
+    at: string;
+    total: number;
+    os: string;
+    ps: string;
+    ss: string;
     items: {
         p: string;
         q: number;
@@ -46,7 +84,30 @@ export function buildOrderQrPayload(params: OrderQrPayload): CompactOrderQrPaylo
     };
 }
 
-export function encodeOrderQr(payload: CompactOrderQrPayload) {
+export function buildOrderConfirmationQrPayload(params: OrderConfirmationQrPayload): CompactOrderConfirmationQrPayload {
+    return {
+        t: "OC",
+        v: 1,
+        id: params.localOrderId,
+        s: params.storeId,
+        c: params.customerId ?? null,
+        seller: params.sellerId ?? null,
+        sd: params.sellerDeviceId ?? null,
+        rid: params.remoteOrderId ?? null,
+        at: params.confirmedAt,
+        total: params.totalAmount,
+        os: params.orderStatus,
+        ps: params.paymentStatus,
+        ss: params.syncStatus,
+        items: params.items.map((item) => ({
+            p: item.productId,
+            q: item.quantity,
+            u: item.unitPrice,
+        })),
+    };
+}
+
+export function encodeOrderQr(payload: CompactOrderQrPayload | CompactOrderConfirmationQrPayload) {
     return JSON.stringify(payload);
 }
 
@@ -70,6 +131,39 @@ export function decodeOrderQr(value: string): OrderQrPayload {
         deviceId: payload.d ?? null,
         createdAt: payload.at,
         totalAmount: payload.total,
+        items: payload.items.map((item) => ({
+            productId: item.p,
+            quantity: item.q,
+            unitPrice: item.u,
+        })),
+    };
+}
+
+export function decodeOrderConfirmationQr(value: string): OrderConfirmationQrPayload {
+    const payload = JSON.parse(value) as CompactOrderConfirmationQrPayload;
+
+    if (payload.t !== "OC" || payload.v !== 1) {
+        throw new Error("QR Code de confirmação inválido.");
+    }
+
+    if (!payload.id || !payload.s || !Array.isArray(payload.items) || payload.items.length === 0) {
+        throw new Error("Confirmação inválida.");
+    }
+
+    return {
+        type: "OFFPAY_ORDER_CONFIRMATION",
+        version: 1,
+        localOrderId: payload.id,
+        storeId: payload.s,
+        customerId: payload.c ?? null,
+        sellerId: payload.seller ?? null,
+        sellerDeviceId: payload.sd ?? null,
+        remoteOrderId: payload.rid ?? null,
+        confirmedAt: payload.at,
+        totalAmount: payload.total,
+        orderStatus: payload.os,
+        paymentStatus: payload.ps,
+        syncStatus: payload.ss,
         items: payload.items.map((item) => ({
             productId: item.p,
             quantity: item.q,

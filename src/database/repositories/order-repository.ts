@@ -1,7 +1,7 @@
 import { randomUUID } from "expo-crypto";
 
 import { OrderItemRequest, OrderResponse } from "@/src/types/sales";
-import { OrderQrPayload } from "@/src/utils/order-qr";
+import { OrderConfirmationQrPayload, OrderQrPayload } from "@/src/utils/order-qr";
 import { db } from "../database";
 import { decreaseLocalProductStock, getProductById } from "./catalog-repository";
 
@@ -44,7 +44,7 @@ function now() {
     return new Date().toISOString();
 }
 
-async function findLocalOrderByLocalId(localOrderId: string) {
+export async function getLocalOrderByLocalId(localOrderId: string) {
     return db.getFirstAsync<LocalOrderRow>(
         `
         SELECT
@@ -91,13 +91,32 @@ async function createOrderItem(params: { orderId: string; productId: string; pro
     return totalPrice;
 }
 
-export async function createLocalOfflineOrder(params: { localOrderId?: string; storeId?: string | null; customerId?: string | null; sellerId?: string | null; deviceId: string; items: OrderItemRequest[]; confirmedBySeller?: boolean; offlineCreatedAt?: string | null }) {
+async function resolveProductName(productId: string) {
+    const product = await getProductById(productId);
+    return product?.name ?? `Produto ${productId.slice(0, 8)}`;
+}
+
+export async function createLocalOfflineOrder(params: {
+    localOrderId?: string;
+    storeId?: string | null;
+    customerId?: string | null;
+    sellerId?: string | null;
+    deviceId: string;
+    items: OrderItemRequest[];
+    confirmedBySeller?: boolean;
+    offlineCreatedAt?: string | null;
+    shouldDecreaseStock?: boolean;
+    remoteOrderId?: string | null;
+    syncStatus?: string | null;
+    orderStatus?: string | null;
+    paymentStatus?: string | null;
+}) {
     if (!params.items.length) {
         throw new Error("Pedido precisa ter pelo menos um item.");
     }
 
-    const existingLocalOrderId = params.localOrderId ?? randomUUID();
-    const existing = await findLocalOrderByLocalId(existingLocalOrderId);
+    const localOrderId = params.localOrderId ?? randomUUID();
+    const existing = await getLocalOrderByLocalId(localOrderId);
 
     if (existing) {
         return {
@@ -134,35 +153,40 @@ export async function createLocalOfflineOrder(params: { localOrderId?: string; s
                 synced_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, null, existingLocalOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.confirmedBySeller ? "CONFIRMED" : "CREATED", "PENDING_PAYMENT", "PENDING", 0, createdAt, offlineCreatedAt, null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null],
         );
 
         for (const item of params.items) {
             const product = await getProductById(item.productId);
+            const unitPrice = item.unitPrice ?? product?.price ?? 0;
 
-            if (!product) {
-                throw new Error("Produto não encontrado no catálogo local.");
+            if (unitPrice <= 0) {
+                throw new Error("Preço inválido no pedido.");
             }
 
-            if (!product.active) {
-                throw new Error(`Produto ${product.name} está inativo.`);
-            }
+            if (params.shouldDecreaseStock !== false) {
+                if (!product) {
+                    throw new Error("Produto não encontrado no catálogo local.");
+                }
 
-            if (product.stockQuantity < item.quantity) {
-                throw new Error(`Estoque insuficiente para ${product.name}.`);
-            }
+                if (!product.active) {
+                    throw new Error(`Produto ${product.name} está inativo.`);
+                }
 
-            const unitPrice = item.unitPrice ?? product.price;
+                if (product.stockQuantity < item.quantity) {
+                    throw new Error(`Estoque insuficiente para ${product.name}.`);
+                }
+
+                await decreaseLocalProductStock(product.id, item.quantity);
+            }
 
             totalAmount += await createOrderItem({
                 orderId,
-                productId: product.id,
-                productName: product.name,
+                productId: item.productId,
+                productName: product?.name ?? (await resolveProductName(item.productId)),
                 unitPrice,
                 quantity: item.quantity,
             });
-
-            await decreaseLocalProductStock(product.id, item.quantity);
         }
 
         await db.runAsync(
@@ -177,14 +201,14 @@ export async function createLocalOfflineOrder(params: { localOrderId?: string; s
 
     return {
         id: orderId,
-        localOrderId: existingLocalOrderId,
+        localOrderId,
         totalAmount,
         duplicated: false,
     };
 }
 
 export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; sellerId?: string | null; sellerDeviceId: string }) {
-    const existing = await findLocalOrderByLocalId(params.payload.localOrderId);
+    const existing = await getLocalOrderByLocalId(params.payload.localOrderId);
 
     if (existing) {
         return {
@@ -204,6 +228,53 @@ export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; 
         items: params.payload.items,
         confirmedBySeller: true,
         offlineCreatedAt: params.payload.createdAt,
+        shouldDecreaseStock: true,
+        syncStatus: "PENDING",
+        orderStatus: "CONFIRMED",
+        paymentStatus: "PENDING_PAYMENT",
+    });
+}
+
+export async function createLocalOrderFromConfirmationQr(params: { payload: OrderConfirmationQrPayload; customerDeviceId: string }) {
+    const existing = await getLocalOrderByLocalId(params.payload.localOrderId);
+
+    if (existing) {
+        await db.runAsync(
+            `
+            UPDATE orders
+            SET remote_order_id = COALESCE(?, remote_order_id),
+                seller_id = COALESCE(?, seller_id),
+                order_status = ?,
+                payment_status = ?,
+                sync_status = ?,
+                synced_at = COALESCE(synced_at, ?)
+            WHERE local_order_id = ?
+            `,
+            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.remoteOrderId ? "SYNCED" : "SELLER_CONFIRMED", now(), params.payload.localOrderId],
+        );
+
+        return {
+            id: existing.id,
+            localOrderId: existing.local_order_id,
+            totalAmount: existing.total_amount,
+            duplicated: true,
+        };
+    }
+
+    return createLocalOfflineOrder({
+        localOrderId: params.payload.localOrderId,
+        storeId: params.payload.storeId,
+        customerId: params.payload.customerId ?? null,
+        sellerId: params.payload.sellerId ?? null,
+        deviceId: params.customerDeviceId,
+        items: params.payload.items,
+        confirmedBySeller: true,
+        offlineCreatedAt: params.payload.confirmedAt,
+        shouldDecreaseStock: false,
+        remoteOrderId: params.payload.remoteOrderId ?? null,
+        syncStatus: params.payload.remoteOrderId ? "SYNCED" : "SELLER_CONFIRMED",
+        orderStatus: params.payload.orderStatus,
+        paymentStatus: params.payload.paymentStatus,
     });
 }
 
@@ -292,6 +363,35 @@ export async function buildPendingOrderPayloads() {
     }
 
     return payloads;
+}
+
+export async function buildOrderConfirmationPayloadFromLocal(localOrderId: string) {
+    const order = await getLocalOrderByLocalId(localOrderId);
+
+    if (!order) {
+        throw new Error("Pedido confirmado não encontrado.");
+    }
+
+    const items = await getLocalOrderItems(order.id);
+
+    return {
+        localOrderId: order.local_order_id,
+        storeId: order.store_id,
+        customerId: order.customer_id,
+        sellerId: order.seller_id,
+        sellerDeviceId: order.device_id,
+        remoteOrderId: order.remote_order_id,
+        confirmedAt: order.synced_at ?? order.created_at,
+        totalAmount: order.total_amount,
+        orderStatus: order.order_status,
+        paymentStatus: order.payment_status,
+        syncStatus: order.sync_status,
+        items: items.map((item) => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+        })),
+    };
 }
 
 export async function markOrderSynced(params: { localOrderId: string; remoteOrderId?: string | null; paymentStatus?: string | null; orderStatus?: string | null; syncStatus?: string | null }) {

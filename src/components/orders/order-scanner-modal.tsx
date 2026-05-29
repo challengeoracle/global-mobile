@@ -12,7 +12,7 @@ import { decodeOrderQr } from "@/src/utils/order-qr";
 type Props = {
     visible: boolean;
     onClose: () => void;
-    onConfirmed: () => void | Promise<void>;
+    onConfirmed: (localOrderId: string) => void | Promise<void>;
 };
 
 export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
@@ -72,19 +72,17 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
 
             const payload = decodeOrderQr(data);
 
-            await createLocalOrderFromQr({
+            const created = await createLocalOrderFromQr({
                 payload,
                 sellerId: user.id,
                 sellerDeviceId: deviceId,
             });
 
-            await onConfirmed();
+            await onConfirmed(created.localOrderId);
 
-            setSuccess("Pedido confirmado offline.");
+            setSuccess("Pedido confirmado.");
 
-            setTimeout(() => {
-                closeScanner();
-            }, 1200);
+            closeScanner();
         } catch (err) {
             console.log("Erro ao confirmar pedido:", err);
             setError(err instanceof Error ? err.message : "QR Code inválido.");

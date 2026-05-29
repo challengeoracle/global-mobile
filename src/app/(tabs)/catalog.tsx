@@ -14,14 +14,18 @@ import { ProductDetailsModal } from "@/src/components/catalog/product-details-mo
 import { ProductFormModal } from "@/src/components/catalog/product-form-modal";
 import { StockAdjustModal } from "@/src/components/catalog/stock-adjust-modal";
 import { CartModal } from "@/src/components/orders/cart-modal";
+import { OrderConfirmationQrModal } from "@/src/components/orders/order-confirmation-qr-modal";
+import { OrderConfirmationScannerModal } from "@/src/components/orders/order-confirmation-scanner-modal";
 import { OrderQrModal } from "@/src/components/orders/order-qr-modal";
 import { OrderScannerModal } from "@/src/components/orders/order-scanner-modal";
 import { PageHeader } from "@/src/components/ui/page-header";
 
 import { clearCatalog } from "@/src/database/repositories/catalog-repository";
+import { buildOrderConfirmationPayloadFromLocal } from "@/src/database/repositories/order-repository";
 import { useCatalogScreen } from "@/src/hooks/use-catalog-screen";
 import { useOrderFlow } from "@/src/hooks/use-order-flow";
 import { buildCatalogQrPayload, encodeCatalogQr } from "@/src/utils/catalog-qr";
+import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
 
 export default function CatalogScreen() {
     const catalog = useCatalogScreen();
@@ -36,8 +40,14 @@ export default function CatalogScreen() {
     const [scannerVisible, setScannerVisible] = useState(false);
     const [customerCatalogVisible, setCustomerCatalogVisible] = useState(false);
     const [cartVisible, setCartVisible] = useState(false);
+
     const [orderQrVisible, setOrderQrVisible] = useState(false);
     const [orderScannerVisible, setOrderScannerVisible] = useState(false);
+
+    const [orderConfirmationScannerVisible, setOrderConfirmationScannerVisible] = useState(false);
+    const [sellerConfirmationQrVisible, setSellerConfirmationQrVisible] = useState(false);
+    const [sellerConfirmationQrValue, setSellerConfirmationQrValue] = useState<string | null>(null);
+    const [sellerConfirmationSynced, setSellerConfirmationSynced] = useState(false);
 
     const qrData = useMemo(() => {
         if (!catalog.catalogStoreId || catalog.categories.length === 0) {
@@ -64,9 +74,29 @@ export default function CatalogScreen() {
 
     async function handleClearCustomerCatalog() {
         orders.clearCart();
+
         await clearCatalog();
         await catalog.loadLocalCatalog();
+
         setCustomerCatalogVisible(false);
+        setCartVisible(false);
+        setOrderQrVisible(false);
+        setOrderConfirmationScannerVisible(false);
+        orders.clearGeneratedOrderQr();
+    }
+
+    function handleOpenCustomerCatalog() {
+        setCustomerCatalogVisible(true);
+        setCartVisible(false);
+        setOrderQrVisible(false);
+        setOrderConfirmationScannerVisible(false);
+    }
+
+    function handleOpenCart() {
+        setCustomerCatalogVisible(false);
+        setCartVisible(true);
+        setOrderQrVisible(false);
+        setOrderConfirmationScannerVisible(false);
     }
 
     async function handleGenerateOrderQr() {
@@ -74,18 +104,76 @@ export default function CatalogScreen() {
 
         if (generated) {
             setCartVisible(false);
+            setCustomerCatalogVisible(false);
+            setOrderConfirmationScannerVisible(false);
             setOrderQrVisible(true);
+
             await catalog.loadLocalCatalog();
         }
     }
 
-    async function handleOrderConfirmedBySeller() {
+    function handleOpenConfirmationScannerFromClient() {
+        setOrderQrVisible(false);
+        setOrderConfirmationScannerVisible(true);
+    }
+
+    async function handleClientScannedSellerConfirmation() {
+        setOrderConfirmationScannerVisible(false);
+        setOrderQrVisible(false);
+
+        orders.clearGeneratedOrderQr();
+
+        await orders.refreshPendingOrderCount();
+        await catalog.loadLocalCatalog();
+    }
+
+    async function handleOrderConfirmedBySeller(localOrderId: string) {
+        setOrderScannerVisible(false);
+
         await orders.refreshPendingOrderCount();
         await catalog.loadLocalCatalog();
 
+        let synced = false;
+
         if (catalog.network.isConnected) {
-            await orders.syncPendingOrders(true);
+            synced = await orders.syncPendingOrders(false);
+
+            await orders.refreshPendingOrderCount();
+            await catalog.loadLocalCatalog();
         }
+
+        const confirmation = await buildOrderConfirmationPayloadFromLocal(localOrderId);
+
+        if (!confirmation.storeId) {
+            throw new Error("Pedido confirmado sem loja vinculada.");
+        }
+
+        const qrPayload = buildOrderConfirmationQrPayload({
+            type: "OFFPAY_ORDER_CONFIRMATION",
+            version: 1,
+            localOrderId: confirmation.localOrderId,
+            storeId: confirmation.storeId,
+            customerId: confirmation.customerId,
+            sellerId: confirmation.sellerId,
+            sellerDeviceId: confirmation.sellerDeviceId,
+            remoteOrderId: confirmation.remoteOrderId,
+            confirmedAt: confirmation.confirmedAt,
+            totalAmount: confirmation.totalAmount,
+            orderStatus: confirmation.orderStatus,
+            paymentStatus: confirmation.paymentStatus,
+            syncStatus: confirmation.syncStatus,
+            items: confirmation.items,
+        });
+
+        setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
+        setSellerConfirmationSynced(synced);
+        setSellerConfirmationQrVisible(true);
+    }
+
+    function handleCloseSellerConfirmationQr() {
+        setSellerConfirmationQrVisible(false);
+        setSellerConfirmationQrValue(null);
+        setSellerConfirmationSynced(false);
     }
 
     if (catalog.loading) {
@@ -99,18 +187,35 @@ export default function CatalogScreen() {
     if (!catalog.isSeller) {
         return (
             <View className="flex-1 bg-background">
-                <CustomerCatalogImportScreen hasImportedCatalog={catalog.products.length > 0} productCount={catalog.products.length} onScanCatalog={() => setScannerVisible(true)} onOpenCatalog={() => setCustomerCatalogVisible(true)} onClearCatalog={handleClearCustomerCatalog} />
+                <CustomerCatalogImportScreen
+                    hasImportedCatalog={catalog.products.length > 0}
+                    productCount={catalog.products.length}
+                    onScanCatalog={() => {
+                        setCustomerCatalogVisible(false);
+                        setCartVisible(false);
+                        setOrderQrVisible(false);
+                        setOrderConfirmationScannerVisible(false);
+                        setScannerVisible(true);
+                    }}
+                    onOpenCatalog={handleOpenCustomerCatalog}
+                    onClearCatalog={handleClearCustomerCatalog}
+                />
 
                 <CatalogScannerModal
                     visible={scannerVisible}
                     onClose={() => setScannerVisible(false)}
                     onImported={async () => {
                         await catalog.loadLocalCatalog();
+
+                        setScannerVisible(false);
+                        setCartVisible(false);
+                        setOrderQrVisible(false);
+                        setOrderConfirmationScannerVisible(false);
                         setCustomerCatalogVisible(true);
                     }}
                 />
 
-                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={() => setCartVisible(true)} />
+                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={handleOpenCart} />
 
                 <ProductDetailsModal
                     visible={catalog.detailsVisible}
@@ -122,7 +227,11 @@ export default function CatalogScreen() {
                     onDeactivate={catalog.deactivateProduct}
                     onAddToCart={(product) => {
                         orders.addToCart(product);
+
                         catalog.setDetailsVisible(false);
+                        setCustomerCatalogVisible(false);
+                        setOrderQrVisible(false);
+                        setOrderConfirmationScannerVisible(false);
                         setCartVisible(true);
                     }}
                 />
@@ -136,6 +245,19 @@ export default function CatalogScreen() {
                         setOrderQrVisible(false);
                         orders.clearGeneratedOrderQr();
                     }}
+                    onScanConfirmation={handleOpenConfirmationScannerFromClient}
+                />
+
+                <OrderConfirmationScannerModal
+                    visible={orderConfirmationScannerVisible}
+                    onClose={() => {
+                        setOrderConfirmationScannerVisible(false);
+
+                        if (orders.generatedOrderQr) {
+                            setOrderQrVisible(true);
+                        }
+                    }}
+                    onConfirmed={handleClientScannedSellerConfirmation}
                 />
             </View>
         );
@@ -182,7 +304,14 @@ export default function CatalogScreen() {
                         </View>
 
                         <View className="flex-row gap-2">
-                            <Pressable onPress={() => setOrderScannerVisible(true)} className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4">
+                            <Pressable
+                                onPress={() => {
+                                    setSellerConfirmationQrVisible(false);
+                                    setSellerConfirmationQrValue(null);
+                                    setOrderScannerVisible(true);
+                                }}
+                                className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4"
+                            >
                                 <Ionicons name="scan-outline" size={18} color={iconColor} />
 
                                 <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Pedido</Text>
@@ -223,6 +352,8 @@ export default function CatalogScreen() {
             <CatalogQrModal visible={qrVisible} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={() => setQrVisible(false)} />
 
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
+
+            <OrderConfirmationQrModal visible={sellerConfirmationQrVisible} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} onClose={handleCloseSellerConfirmationQr} />
 
             <CategoryFormModal visible={catalog.categoryFormVisible} mode={catalog.categoryFormMode} initialCategory={catalog.selectedCategory} onClose={() => catalog.setCategoryFormVisible(false)} onSubmit={catalog.submitCategory} />
 
