@@ -48,44 +48,45 @@ export async function clearCatalog() {
 }
 
 export async function saveCatalog(catalog: CatalogResponse) {
-    await db.withTransactionAsync(async () => {
-        await clearCatalog();
+    await db.execAsync(`
+        DELETE FROM products;
+        DELETE FROM categories;
+    `);
 
-        for (const category of catalog.categories) {
+    for (const category of catalog.categories) {
+        await db.runAsync(
+            `
+            INSERT OR REPLACE INTO categories (
+                id,
+                name,
+                description,
+                active,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            `,
+            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+        );
+
+        for (const product of category.products) {
             await db.runAsync(
                 `
-                    INSERT OR REPLACE INTO categories (
-                        id,
-                        name,
-                        description,
-                        active,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO products (
+                    id,
+                    category_id,
+                    store_id,
+                    name,
+                    description,
+                    price,
+                    stock_quantity,
+                    active,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+                [product.id, category.id, catalog.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, product.active ? 1 : 0, product.createdAt ?? null, product.updatedAt ?? null],
             );
-
-            for (const product of category.products) {
-                await db.runAsync(
-                    `
-                        INSERT OR REPLACE INTO products (
-                            id,
-                            category_id,
-                            store_id,
-                            name,
-                            description,
-                            price,
-                            stock_quantity,
-                            active,
-                            created_at,
-                            updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `,
-                    [product.id, category.id, catalog.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, product.active ? 1 : 0, product.createdAt ?? null, product.updatedAt ?? null],
-                );
-            }
         }
-    });
+    }
 }
 
 export async function getCategories() {
@@ -135,21 +136,21 @@ export async function getProducts() {
 export async function getProductsByCategory(categoryId: string) {
     const rows = await db.getAllAsync<LocalProductRow>(
         `
-            SELECT
-                id,
-                category_id,
-                store_id,
-                name,
-                description,
-                price,
-                stock_quantity,
-                active,
-                created_at,
-                updated_at
-            FROM products
-            WHERE active = 1
-              AND category_id = ?
-            ORDER BY name ASC
+        SELECT
+            id,
+            category_id,
+            store_id,
+            name,
+            description,
+            price,
+            stock_quantity,
+            active,
+            created_at,
+            updated_at
+        FROM products
+        WHERE active = 1
+          AND category_id = ?
+        ORDER BY name ASC
         `,
         [categoryId],
     );
@@ -160,20 +161,20 @@ export async function getProductsByCategory(categoryId: string) {
 export async function getProductById(productId: string) {
     const row = await db.getFirstAsync<LocalProductRow>(
         `
-            SELECT
-                id,
-                category_id,
-                store_id,
-                name,
-                description,
-                price,
-                stock_quantity,
-                active,
-                created_at,
-                updated_at
-            FROM products
-            WHERE id = ?
-            LIMIT 1
+        SELECT
+            id,
+            category_id,
+            store_id,
+            name,
+            description,
+            price,
+            stock_quantity,
+            active,
+            created_at,
+            updated_at
+        FROM products
+        WHERE id = ?
+        LIMIT 1
         `,
         [productId],
     );
@@ -194,6 +195,19 @@ export async function getCatalogFromLocal() {
     return categoriesWithProducts;
 }
 
+export async function getCatalogStoreIdFromLocal() {
+    const row = await db.getFirstAsync<{ store_id: string }>(
+        `
+        SELECT store_id
+        FROM products
+        WHERE store_id IS NOT NULL
+        LIMIT 1
+        `,
+    );
+
+    return row?.store_id ?? null;
+}
+
 export async function decreaseLocalProductStock(productId: string, quantity: number) {
     const product = await getProductById(productId);
 
@@ -207,10 +221,10 @@ export async function decreaseLocalProductStock(productId: string, quantity: num
 
     await db.runAsync(
         `
-            UPDATE products
-            SET stock_quantity = stock_quantity - ?,
-                updated_at = ?
-            WHERE id = ?
+        UPDATE products
+        SET stock_quantity = stock_quantity - ?,
+            updated_at = ?
+        WHERE id = ?
         `,
         [quantity, new Date().toISOString(), productId],
     );
@@ -219,53 +233,41 @@ export async function decreaseLocalProductStock(productId: string, quantity: num
 export async function upsertLocalProduct(params: { id: string; categoryId: string; storeId: string; name: string; description?: string | null; price: number; stockQuantity: number; active?: boolean; createdAt?: string | null; updatedAt?: string | null }) {
     await db.runAsync(
         `
-            INSERT OR REPLACE INTO products (
-                id,
-                category_id,
-                store_id,
-                name,
-                description,
-                price,
-                stock_quantity,
-                active,
-                created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO products (
+            id,
+            category_id,
+            store_id,
+            name,
+            description,
+            price,
+            stock_quantity,
+            active,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [params.id, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString(), params.updatedAt ?? new Date().toISOString()],
     );
 }
 
-export async function deactivateLocalProduct(productId: string) {
-    await db.runAsync(
-        `
-            UPDATE products
-            SET active = 0,
-                updated_at = ?
-            WHERE id = ?
-        `,
-        [new Date().toISOString(), productId],
-    );
-}
-
 export async function createLocalProduct(params: { categoryId: string; storeId: string; name: string; description?: string | null; price: number; stockQuantity: number }) {
-    const productId = `local-product-${randomUUID()}`;
+    const productId = randomUUID();
     const now = new Date().toISOString();
 
     await db.runAsync(
         `
-            INSERT INTO products (
-                id,
-                category_id,
-                store_id,
-                name,
-                description,
-                price,
-                stock_quantity,
-                active,
-                created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (
+            id,
+            category_id,
+            store_id,
+            name,
+            description,
+            price,
+            stock_quantity,
+            active,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [productId, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, 1, now, now],
     );
@@ -276,16 +278,28 @@ export async function createLocalProduct(params: { categoryId: string; storeId: 
 export async function updateLocalProduct(params: { productId: string; categoryId?: string; name: string; description?: string | null; price: number; stockQuantity: number }) {
     await db.runAsync(
         `
-            UPDATE products
-            SET category_id = COALESCE(?, category_id),
-                name = ?,
-                description = ?,
-                price = ?,
-                stock_quantity = ?,
-                updated_at = ?
-            WHERE id = ?
+        UPDATE products
+        SET category_id = COALESCE(?, category_id),
+            name = ?,
+            description = ?,
+            price = ?,
+            stock_quantity = ?,
+            updated_at = ?
+        WHERE id = ?
         `,
         [params.categoryId ?? null, params.name, params.description ?? null, params.price, params.stockQuantity, new Date().toISOString(), params.productId],
+    );
+}
+
+export async function deactivateLocalProduct(productId: string) {
+    await db.runAsync(
+        `
+        UPDATE products
+        SET active = 0,
+            updated_at = ?
+        WHERE id = ?
+        `,
+        [new Date().toISOString(), productId],
     );
 }
 
@@ -304,10 +318,10 @@ export async function adjustLocalProductStock(productId: string, quantityDelta: 
 
     await db.runAsync(
         `
-            UPDATE products
-            SET stock_quantity = ?,
-                updated_at = ?
-            WHERE id = ?
+        UPDATE products
+        SET stock_quantity = ?,
+            updated_at = ?
+        WHERE id = ?
         `,
         [newStock, new Date().toISOString(), productId],
     );
@@ -316,71 +330,93 @@ export async function adjustLocalProductStock(productId: string, quantityDelta: 
 }
 
 export async function saveCatalogFromQr(payload: CatalogQrPayload) {
-    await db.withTransactionAsync(async () => {
-        await clearCatalog();
+    await db.execAsync(`
+        DELETE FROM products;
+        DELETE FROM categories;
+    `);
 
-        for (const category of payload.categories) {
+    for (const category of payload.categories) {
+        await db.runAsync(
+            `
+            INSERT OR REPLACE INTO categories (
+                id,
+                name,
+                description,
+                active,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            `,
+            [category.id, category.name, category.description ?? null, 1, payload.generatedAt],
+        );
+
+        for (const product of category.products) {
             await db.runAsync(
                 `
-                    INSERT OR REPLACE INTO categories (
-                        id,
-                        name,
-                        description,
-                        active,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO products (
+                    id,
+                    category_id,
+                    store_id,
+                    name,
+                    description,
+                    price,
+                    stock_quantity,
+                    active,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [category.id, category.name, category.description ?? null, 1, payload.generatedAt],
+                [product.id, category.id, payload.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, 1, payload.generatedAt, payload.generatedAt],
             );
-
-            for (const product of category.products) {
-                await db.runAsync(
-                    `
-                        INSERT OR REPLACE INTO products (
-                            id,
-                            category_id,
-                            store_id,
-                            name,
-                            description,
-                            price,
-                            stock_quantity,
-                            active,
-                            created_at,
-                            updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `,
-                    [product.id, category.id, payload.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, 1, payload.generatedAt, payload.generatedAt],
-                );
-            }
         }
-    });
+    }
 
     return payload.storeId;
 }
 
 export async function saveCategories(categories: CategoryResponse[]) {
-    await db.withTransactionAsync(async () => {
-        for (const category of categories) {
-            await db.runAsync(
-                `
-                INSERT OR REPLACE INTO categories (
-                    id, name, description, active, created_at
-                ) VALUES (?, ?, ?, ?, ?)
-                `,
-                [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
-            );
-        }
-    });
+    for (const category of categories) {
+        await db.runAsync(
+            `
+            INSERT OR REPLACE INTO categories (
+                id,
+                name,
+                description,
+                active,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            `,
+            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+        );
+    }
+}
+
+export async function upsertLocalCategory(params: { id: string; name: string; description?: string | null; active?: boolean; createdAt?: string | null }) {
+    await db.runAsync(
+        `
+        INSERT OR REPLACE INTO categories (
+            id,
+            name,
+            description,
+            active,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        `,
+        [params.id, params.name, params.description ?? null, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString()],
+    );
 }
 
 export async function createLocalCategory(params: { name: string; description?: string | null }) {
-    const categoryId = `local-category-${randomUUID()}`;
+    const categoryId = randomUUID();
     const now = new Date().toISOString();
 
     await db.runAsync(
         `
         INSERT INTO categories (
-            id, name, description, active, created_at
+            id,
+            name,
+            description,
+            active,
+            created_at
         ) VALUES (?, ?, ?, ?, ?)
         `,
         [categoryId, params.name, params.description ?? null, 1, now],
@@ -389,22 +425,12 @@ export async function createLocalCategory(params: { name: string; description?: 
     return categoryId;
 }
 
-export async function upsertLocalCategory(params: { id: string; name: string; description?: string | null; active?: boolean; createdAt?: string | null }) {
-    await db.runAsync(
-        `
-        INSERT OR REPLACE INTO categories (
-            id, name, description, active, created_at
-        ) VALUES (?, ?, ?, ?, ?)
-        `,
-        [params.id, params.name, params.description ?? null, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString()],
-    );
-}
-
 export async function updateLocalCategory(params: { categoryId: string; name: string; description?: string | null }) {
     await db.runAsync(
         `
         UPDATE categories
-        SET name = ?, description = ?
+        SET name = ?,
+            description = ?
         WHERE id = ?
         `,
         [params.name, params.description ?? null, params.categoryId],
@@ -420,4 +446,22 @@ export async function deactivateLocalCategory(categoryId: string) {
         `,
         [categoryId],
     );
+}
+
+export async function normalizeLegacyCatalogIds() {
+    try {
+        await db.runAsync(`
+            UPDATE catalog_sync_queue
+            SET category_id = REPLACE(category_id, 'local-category-', '')
+            WHERE category_id LIKE 'local-category-%'
+        `);
+
+        await db.runAsync(`
+            UPDATE catalog_sync_queue
+            SET product_id = REPLACE(product_id, 'local-product-', '')
+            WHERE product_id LIKE 'local-product-%'
+        `);
+    } catch (err) {
+        console.warn("Não foi possível normalizar IDs antigos da fila de catálogo.", err);
+    }
 }

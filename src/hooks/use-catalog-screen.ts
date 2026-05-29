@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SortDirection } from "@/src/components/catalog/catalog-toolbar";
 import { CategoryFormValues } from "@/src/components/catalog/category-form-modal";
 import { ProductFormValues } from "@/src/components/catalog/product-form-modal";
 import { useAuth } from "@/src/contexts/auth-context";
-import { adjustLocalProductStock, createLocalCategory, createLocalProduct, deactivateLocalCategory, deactivateLocalProduct, updateLocalCategory, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
+import { adjustLocalProductStock, createLocalCategory, createLocalProduct, deactivateLocalCategory, deactivateLocalProduct, getCatalogStoreIdFromLocal, normalizeLegacyCatalogIds, updateLocalCategory, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
 import { enqueueCatalogChange, getPendingCatalogChanges, markCatalogChangeRejected, markCatalogChangeSynced } from "@/src/database/repositories/sync-queue-repository";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
 import { syncCatalog } from "@/src/services/sales-service";
@@ -31,6 +31,8 @@ export function useCatalogScreen() {
     const catalog = useCatalog({
         autoLoad: !!isSeller,
     });
+
+    const syncingRef = useRef(false);
 
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
@@ -78,6 +80,7 @@ export function useCatalogScreen() {
     async function refreshPendingCount() {
         const pending = await getPendingCatalogChanges();
         setPendingCount(pending.length);
+        return pending.length;
     }
 
     async function reloadLocalState(successMessage?: string) {
@@ -96,54 +99,78 @@ export function useCatalogScreen() {
         });
     }
 
-    useEffect(() => {
-        refreshPendingCount();
-    }, []);
-
-    async function refreshCatalog() {
-        try {
-            setMessage("");
-
-            if (!network.isConnected) {
-                await catalog.loadLocalCatalog();
-                await refreshPendingCount();
-                setMessage("Sem conexão. Catálogo carregado localmente.");
-                return;
-            }
-
-            await catalog.syncCatalogFromApi();
-            await refreshPendingCount();
-            setMessage("Catálogo atualizado.");
-        } catch (err) {
-            setMessage(getErrorMessage(err, "Erro ao atualizar catálogo."));
+    async function resolveCatalogStoreId() {
+        if (catalog.catalogStoreId) {
+            return catalog.catalogStoreId;
         }
+
+        const localStoreId = await getCatalogStoreIdFromLocal();
+
+        if (localStoreId) {
+            return localStoreId;
+        }
+
+        if (network.isConnected) {
+            const remoteCatalog = await catalog.pullRemoteCatalog();
+            return remoteCatalog.storeId;
+        }
+
+        throw new Error("Abra o catálogo online uma vez antes de criar produtos offline.");
     }
 
-    async function syncPendingChanges() {
-        try {
-            setMessage("");
+    async function flushPendingCatalogChanges(options?: { pullAfterSync?: boolean; silent?: boolean }) {
+        const pullAfterSync = options?.pullAfterSync ?? true;
+        const silent = options?.silent ?? false;
 
-            if (!network.isConnected) {
+        if (syncingRef.current) {
+            return false;
+        }
+
+        if (!network.isConnected) {
+            if (!silent) {
                 setMessage("Sem conexão. Alterações seguem salvas.");
-                return;
             }
 
-            if (!user?.deviceId) {
+            await refreshPendingCount();
+            return false;
+        }
+
+        if (!user?.deviceId) {
+            if (!silent) {
                 setMessage("Device ID não encontrado.");
-                return;
             }
+
+            await refreshPendingCount();
+            return false;
+        }
+
+        try {
+            syncingRef.current = true;
+
+            await normalizeLegacyCatalogIds();
 
             const pending = await getPendingCatalogChanges();
 
             if (!pending.length) {
-                setMessage("Nada para sincronizar.");
-                return;
+                await refreshPendingCount();
+
+                if (pullAfterSync) {
+                    await catalog.pullRemoteCatalog();
+                }
+
+                if (!silent) {
+                    setMessage("Catálogo atualizado.");
+                }
+
+                return true;
             }
 
             const response = await syncCatalog({
                 deviceId: user.deviceId,
                 changes: pending.map(({ queueId, ...change }) => change),
             });
+
+            let hasRejected = false;
 
             for (let index = 0; index < pending.length; index++) {
                 const queueItem = pending[index];
@@ -156,16 +183,111 @@ export function useCatalogScreen() {
                 if (synced) {
                     await markCatalogChangeSynced(queueItem.queueId, result.message);
                 } else {
+                    hasRejected = true;
                     await markCatalogChangeRejected(queueItem.queueId, result.message);
                 }
             }
 
-            await catalog.syncCatalogFromApi();
             await refreshPendingCount();
-            setMessage("Mudanças sincronizadas.");
+
+            if (hasRejected) {
+                await catalog.loadLocalCatalog();
+
+                if (!silent) {
+                    setMessage("Algumas alterações foram rejeitadas. Verifique os dados e tente novamente.");
+                }
+
+                return false;
+            }
+
+            if (pullAfterSync) {
+                await catalog.pullRemoteCatalog();
+            } else {
+                await catalog.loadLocalCatalog();
+            }
+
+            await refreshPendingCount();
+
+            if (!silent) {
+                setMessage("Mudanças sincronizadas.");
+            }
+
+            return true;
         } catch (err) {
-            setMessage(getErrorMessage(err, "Erro ao sincronizar."));
+            await catalog.loadLocalCatalog();
+            await refreshPendingCount();
+
+            if (!silent) {
+                setMessage(getErrorMessage(err, "Erro ao sincronizar. Alterações seguem salvas localmente."));
+            }
+
+            return false;
+        } finally {
+            syncingRef.current = false;
         }
+    }
+
+    async function saveLocalAndAutoSync(successMessage: string) {
+        await reloadLocalState(successMessage);
+
+        if (network.isConnected) {
+            await flushPendingCatalogChanges({
+                pullAfterSync: true,
+                silent: true,
+            });
+
+            await refreshPendingCount();
+        }
+    }
+
+    useEffect(() => {
+        async function prepareLocalCatalog() {
+            await normalizeLegacyCatalogIds();
+            await catalog.loadLocalCatalog();
+            await refreshPendingCount();
+        }
+
+        prepareLocalCatalog();
+    }, []);
+
+    useEffect(() => {
+        if (!isSeller) return;
+        if (!network.isConnected) return;
+
+        flushPendingCatalogChanges({
+            pullAfterSync: true,
+            silent: true,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isSeller, network.isConnected]);
+
+    async function refreshCatalog() {
+        try {
+            setMessage("");
+
+            if (!network.isConnected) {
+                await catalog.loadLocalCatalog();
+                await refreshPendingCount();
+                setMessage("Sem conexão. Catálogo carregado localmente.");
+                return;
+            }
+
+            await flushPendingCatalogChanges({
+                pullAfterSync: true,
+                silent: false,
+            });
+        } catch (err) {
+            await catalog.loadLocalCatalog();
+            await refreshPendingCount();
+            setMessage(getErrorMessage(err, "Erro ao atualizar catálogo."));
+        }
+    }
+
+    async function syncPendingChanges() {
+        await flushPendingCatalogChanges({
+            pullAfterSync: true,
+            silent: false,
+        });
     }
 
     function openProduct(product: CatalogProduct) {
@@ -191,17 +313,15 @@ export function useCatalogScreen() {
     }
 
     async function submitProduct(values: ProductFormValues) {
-        if (!catalog.catalogStoreId) {
-            throw new Error("Store ID do catálogo não encontrado.");
-        }
+        const storeId = await resolveCatalogStoreId();
 
         const price = Number(values.price);
         const stockQuantity = Number(values.stockQuantity);
 
         if (formMode === "create") {
-            await createLocalProduct({
+            const productId = await createLocalProduct({
                 categoryId: values.categoryId,
-                storeId: catalog.catalogStoreId,
+                storeId,
                 name: values.name,
                 description: values.description,
                 price,
@@ -210,6 +330,7 @@ export function useCatalogScreen() {
 
             await addCatalogQueue({
                 operation: "PRODUCT_CREATE",
+                productId,
                 categoryId: values.categoryId,
                 name: values.name,
                 description: values.description,
@@ -239,7 +360,7 @@ export function useCatalogScreen() {
             });
         }
 
-        await reloadLocalState("Produto salvo offline.");
+        await saveLocalAndAutoSync(network.isConnected ? "Produto salvo." : "Produto salvo offline.");
     }
 
     async function adjustStock(quantityDelta: number) {
@@ -253,7 +374,7 @@ export function useCatalogScreen() {
             quantityDelta,
         });
 
-        await reloadLocalState("Estoque ajustado offline.");
+        await saveLocalAndAutoSync(network.isConnected ? "Estoque ajustado." : "Estoque ajustado offline.");
     }
 
     async function deactivateProduct() {
@@ -267,7 +388,8 @@ export function useCatalogScreen() {
         });
 
         setDetailsVisible(false);
-        await reloadLocalState("Produto desativado offline.");
+
+        await saveLocalAndAutoSync(network.isConnected ? "Produto desativado." : "Produto desativado offline.");
     }
 
     function openCreateCategory() {
@@ -296,7 +418,7 @@ export function useCatalogScreen() {
                 description: values.description || undefined,
             });
 
-            await reloadLocalState("Categoria salva offline.");
+            await saveLocalAndAutoSync(network.isConnected ? "Categoria criada." : "Categoria salva offline.");
             return;
         }
 
@@ -314,7 +436,7 @@ export function useCatalogScreen() {
                 description: values.description || undefined,
             });
 
-            await reloadLocalState("Categoria atualizada offline.");
+            await saveLocalAndAutoSync(network.isConnected ? "Categoria atualizada." : "Categoria atualizada offline.");
         }
     }
 
@@ -335,7 +457,7 @@ export function useCatalogScreen() {
             setSelectedCategoryId(null);
         }
 
-        await reloadLocalState("Categoria desativada offline.");
+        await saveLocalAndAutoSync(network.isConnected ? "Categoria desativada." : "Categoria desativada offline.");
     }
 
     return {

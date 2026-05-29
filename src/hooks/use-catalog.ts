@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getCatalogFromLocal, saveCatalog, saveCategories } from "../database/repositories/catalog-repository";
-import { getCatalogByStore, getMyCatalog, getMyCategories } from "../services/sales-service";
+import { getCatalogFromLocal, getCatalogStoreIdFromLocal, saveCatalog } from "../database/repositories/catalog-repository";
+import { getCatalogByStore, getMyCatalog } from "../services/sales-service";
 import { CatalogCategory } from "../types/sales";
 
 type UseCatalogOptions = {
@@ -21,40 +21,35 @@ export function useCatalog(options: UseCatalogOptions = {}) {
 
     const loadLocalCatalog = useCallback(async () => {
         const localCatalog = await getCatalogFromLocal();
+        const localStoreId = await getCatalogStoreIdFromLocal();
+
         setCategories(localCatalog);
+
+        if (localStoreId) {
+            setCatalogStoreId(localStoreId);
+        }
     }, []);
 
-    const syncCatalogFromApi = useCallback(async () => {
+    const pullRemoteCatalog = useCallback(async () => {
         try {
             setRefreshing(true);
             setError(null);
 
-            if (storeId) {
-                const catalog = await getCatalogByStore(storeId);
+            const remoteCatalog = storeId ? await getCatalogByStore(storeId) : await getMyCatalog();
 
-                await saveCatalog(catalog);
+            await saveCatalog(remoteCatalog);
 
-                setCatalogStoreId(catalog.storeId);
-                setLastSyncAt(catalog.syncedAt);
-
-                await loadLocalCatalog();
-                return;
-            }
-
-            const [catalog, remoteCategories] = await Promise.all([getMyCatalog(), getMyCategories()]);
-
-            await saveCatalog(catalog);
-            await saveCategories(remoteCategories);
-
-            setCatalogStoreId(catalog.storeId);
-            setLastSyncAt(catalog.syncedAt);
+            setCatalogStoreId(remoteCatalog.storeId);
+            setLastSyncAt(remoteCatalog.syncedAt);
 
             await loadLocalCatalog();
-        } catch (err) {
-            const message = err instanceof Error ? err.message : "Erro ao sincronizar catálogo.";
 
+            return remoteCatalog;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Erro ao baixar catálogo.";
             setError(message);
             await loadLocalCatalog();
+            throw err;
         } finally {
             setRefreshing(false);
         }
@@ -66,15 +61,13 @@ export function useCatalog(options: UseCatalogOptions = {}) {
             setError(null);
 
             await loadLocalCatalog();
-            await syncCatalogFromApi();
         } catch (err) {
-            const message = err instanceof Error ? err.message : "Erro ao carregar catálogo.";
-
+            const message = err instanceof Error ? err.message : "Erro ao carregar catálogo local.";
             setError(message);
         } finally {
             setLoading(false);
         }
-    }, [loadLocalCatalog, syncCatalogFromApi]);
+    }, [loadLocalCatalog]);
 
     useEffect(() => {
         if (autoLoad) {
@@ -91,6 +84,6 @@ export function useCatalog(options: UseCatalogOptions = {}) {
         lastSyncAt,
         loadCatalog,
         loadLocalCatalog,
-        syncCatalogFromApi,
+        pullRemoteCatalog,
     };
 }
