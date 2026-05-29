@@ -6,7 +6,6 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { CatalogQrModal } from "@/src/components/catalog/catalog-qr-modal";
 import { CatalogScannerModal } from "@/src/components/catalog/catalog-scanner-modal";
 import { CatalogToolbar } from "@/src/components/catalog/catalog-toolbar";
-import { CategoryFormModal } from "@/src/components/catalog/category-form-modal";
 import { CustomerCatalogImportScreen } from "@/src/components/catalog/customer-catalog-import-screen";
 import { CustomerCatalogModal } from "@/src/components/catalog/customer-catalog-modal";
 import { ProductCard } from "@/src/components/catalog/product-card";
@@ -87,46 +86,49 @@ export default function CatalogScreen() {
 
     function handleOpenCustomerCatalog() {
         setCustomerCatalogVisible(true);
-        setCartVisible(false);
-        setOrderQrVisible(false);
-        setOrderConfirmationScannerVisible(false);
     }
 
     function handleOpenCart() {
-        setCustomerCatalogVisible(false);
         setCartVisible(true);
-        setOrderQrVisible(false);
-        setOrderConfirmationScannerVisible(false);
     }
 
     async function handleGenerateOrderQr() {
         const generated = await orders.generateOrderQr();
 
         if (generated) {
-            setCartVisible(false);
-            setCustomerCatalogVisible(false);
-            setOrderConfirmationScannerVisible(false);
+            // A MÁGICA ACONTECE AQUI:
+            // Nós NÃO fechamos o carrinho (`setCartVisible(false)` foi removido).
+            // O modal do QR Code simplesmente sobe por cima do carrinho de forma fluida.
+            // Isso evita 100% dos bugs de animação travada do React Native.
             setOrderQrVisible(true);
-
-            await catalog.loadLocalCatalog();
         }
     }
 
     function handleOpenConfirmationScannerFromClient() {
         setOrderQrVisible(false);
-        setOrderConfirmationScannerVisible(true);
+
+        setTimeout(() => {
+            setOrderConfirmationScannerVisible(true);
+        }, 500);
     }
 
+    // Fluxo final do CLIENTE - O cliente viu que o vendedor confirmou a venda
     async function handleClientScannedSellerConfirmation() {
+        // AQUI SIM, com a venda salva, fechamos todas as janelas que estavam empilhadas
         setOrderConfirmationScannerVisible(false);
         setOrderQrVisible(false);
+        setCartVisible(false);
+        setCustomerCatalogVisible(false);
 
+        // Limpamos tudo para a próxima compra
         orders.clearGeneratedOrderQr();
+        orders.clearCart();
 
         await orders.refreshPendingOrderCount();
         await catalog.loadLocalCatalog();
     }
 
+    // Fluxo do VENDEDOR - Escaneando o QR do Cliente para receber o pedido
     async function handleOrderConfirmedBySeller(localOrderId: string) {
         setOrderScannerVisible(false);
 
@@ -165,9 +167,11 @@ export default function CatalogScreen() {
             items: confirmation.items,
         });
 
-        setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
-        setSellerConfirmationSynced(synced);
-        setSellerConfirmationQrVisible(true);
+        setTimeout(() => {
+            setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
+            setSellerConfirmationSynced(synced);
+            setSellerConfirmationQrVisible(true);
+        }, 500);
     }
 
     function handleCloseSellerConfirmationQr() {
@@ -205,13 +209,14 @@ export default function CatalogScreen() {
                     visible={scannerVisible}
                     onClose={() => setScannerVisible(false)}
                     onImported={async () => {
+                        orders.clearCart();
                         await catalog.loadLocalCatalog();
 
                         setScannerVisible(false);
-                        setCartVisible(false);
-                        setOrderQrVisible(false);
-                        setOrderConfirmationScannerVisible(false);
-                        setCustomerCatalogVisible(true);
+
+                        setTimeout(() => {
+                            setCustomerCatalogVisible(true);
+                        }, 500);
                     }}
                 />
 
@@ -227,12 +232,7 @@ export default function CatalogScreen() {
                     onDeactivate={catalog.deactivateProduct}
                     onAddToCart={(product) => {
                         orders.addToCart(product);
-
                         catalog.setDetailsVisible(false);
-                        setCustomerCatalogVisible(false);
-                        setOrderQrVisible(false);
-                        setOrderConfirmationScannerVisible(false);
-                        setCartVisible(true);
                     }}
                 />
 
@@ -242,6 +242,7 @@ export default function CatalogScreen() {
                     visible={orderQrVisible}
                     orderQr={orders.generatedOrderQr}
                     onClose={() => {
+                        // Se o cliente fechar o QR Code sem querer, ele volta pro carrinho com os itens.
                         setOrderQrVisible(false);
                         orders.clearGeneratedOrderQr();
                     }}
@@ -254,7 +255,9 @@ export default function CatalogScreen() {
                         setOrderConfirmationScannerVisible(false);
 
                         if (orders.generatedOrderQr) {
-                            setOrderQrVisible(true);
+                            setTimeout(() => {
+                                setOrderQrVisible(true);
+                            }, 500);
                         }
                     }}
                     onConfirmed={handleClientScannedSellerConfirmation}
@@ -288,8 +291,8 @@ export default function CatalogScreen() {
                         onStockSortChange={catalog.setStockSort}
                         onRefresh={catalog.refreshCatalog}
                         onSync={catalog.syncPendingChanges}
-                        onEditCategory={catalog.openEditCategory}
                         onDeleteCategory={catalog.removeCategory}
+                        onSubmitCategory={catalog.submitCategory}
                     />
 
                     {catalog.message || catalog.error ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{catalog.message || catalog.error}</Text> : null}
@@ -321,12 +324,6 @@ export default function CatalogScreen() {
                                 <Ionicons name="qr-code-outline" size={18} color={iconColor} />
                             </Pressable>
 
-                            <Pressable onPress={catalog.openCreateCategory} className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4">
-                                <Ionicons name="folder-outline" size={18} color={iconColor} />
-
-                                <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Categoria</Text>
-                            </Pressable>
-
                             <Pressable onPress={catalog.openCreate} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
                                 <Ionicons name="add" size={18} color={whiteIcon} />
 
@@ -354,8 +351,6 @@ export default function CatalogScreen() {
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
 
             <OrderConfirmationQrModal visible={sellerConfirmationQrVisible} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} onClose={handleCloseSellerConfirmationQr} />
-
-            <CategoryFormModal visible={catalog.categoryFormVisible} mode={catalog.categoryFormMode} initialCategory={catalog.selectedCategory} onClose={() => catalog.setCategoryFormVisible(false)} onSubmit={catalog.submitCategory} />
 
             <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
 

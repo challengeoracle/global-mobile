@@ -30,7 +30,14 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
     const iconOpacity = useSharedValue(0);
 
     useEffect(() => {
-        if (visible && !scanned) {
+        if (!visible) {
+            setScanned(false);
+            setError("");
+            setSuccess("");
+            return;
+        }
+
+        if (!scanned) {
             iconScale.value = 0;
             iconOpacity.value = 0;
 
@@ -78,11 +85,9 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
                 sellerDeviceId: deviceId,
             });
 
-            await onConfirmed(created.localOrderId);
-
             setSuccess("Pedido confirmado.");
 
-            closeScanner();
+            await onConfirmed(created.localOrderId);
         } catch (err) {
             console.log("Erro ao confirmar pedido:", err);
             setError(err instanceof Error ? err.message : "QR Code inválido.");
@@ -158,7 +163,7 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
                             <View className="rounded-3xl bg-black/70 p-5">
                                 <Text className="text-center text-base font-black text-white">Aponte para o QR do cliente</Text>
 
-                                <Text className="mt-2 text-center text-sm leading-6 text-white/70">O pedido será salvo neste aparelho e sincronizado quando houver conexão.</Text>
+                                <Text className="mt-2 text-center text-sm leading-6 text-white/70">Depois da leitura, o vendedor mostrará um QR de confirmação para o cliente.</Text>
 
                                 {success ? <Text className="mt-4 text-center text-sm font-bold text-primary">{success}</Text> : null}
 

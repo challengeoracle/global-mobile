@@ -167,7 +167,9 @@ export function useOrderFlow(storeId?: string | null) {
         };
 
         setGeneratedOrderQr(generated);
-        clearCart();
+
+        // REMOVIDO: clearCart(); daqui.
+        // O carrinho só limpa quando o vendedor confirma a venda.
 
         setMessage("Mostre o QR Code para o vendedor confirmar a venda.");
 
