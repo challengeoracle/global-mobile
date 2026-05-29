@@ -1,5 +1,5 @@
 import { authRequest } from "../lib/api";
-import { AuthResponse, CustomerOfflineActivationResponse, CustomerOfflineStatusResponse, DeviceStatusResponse, LoginRequest, OfflineActivationResponse, RegisterCustomerRequest, RegisterSellerRequest, UserResponse } from "../types/auth";
+import { AuthResponse, DeviceStatusResponse, LoginRequest, RegisterCustomerRequest, RegisterSellerRequest, UserResponse } from "../types/auth";
 
 export function login(body: LoginRequest) {
     return authRequest<AuthResponse>("/auth/login", {
@@ -24,32 +24,6 @@ export function registerCustomer(body: RegisterCustomerRequest) {
 
 export function me() {
     return authRequest<UserResponse>("/auth/me", {
-        auth: true,
-    });
-}
-
-export function getSellerDevice() {
-    return authRequest<DeviceStatusResponse>("/device/me", {
-        auth: true,
-    });
-}
-
-export function activateSellerOffline() {
-    return authRequest<OfflineActivationResponse>("/device/offline/activate", {
-        method: "POST",
-        auth: true,
-    });
-}
-
-export function activateCustomerOffline() {
-    return authRequest<CustomerOfflineActivationResponse>("/customer/offline/activate", {
-        method: "POST",
-        auth: true,
-    });
-}
-
-export function getCustomerOfflineStatus() {
-    return authRequest<CustomerOfflineStatusResponse>("/customer/offline/me", {
         auth: true,
     });
 }

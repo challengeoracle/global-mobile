@@ -113,13 +113,17 @@ export function useCatalogScreen() {
             return localStoreId;
         }
 
+        if (user?.storeId) {
+            return user.storeId;
+        }
+
         if (network.isConnected) {
             const remoteCatalog = await catalog.pullRemoteCatalog();
 
             return remoteCatalog.storeId;
         }
 
-        throw new Error("Abra o catálogo online uma vez antes de criar produtos offline.");
+        throw new Error("Store ID não encontrado para salvar o catálogo local.");
     }
 
     async function flushPendingCatalogChanges(options?: { pullAfterSync?: boolean; silent?: boolean }) {

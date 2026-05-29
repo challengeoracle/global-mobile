@@ -9,6 +9,7 @@ export type UserResponse = {
     role: UserRole;
     storeName: string | null;
     deviceId: string | null;
+    storeId?: string | null;
 };
 
 export type AuthResponse = {
@@ -43,27 +44,7 @@ export type RegisterCustomerRequest = {
 export type DeviceStatusResponse = {
     deviceId: string;
     active: boolean;
-    offlineEnabled: boolean;
-    expired: boolean;
-    offlineExpiresAt: string | null;
-};
-
-export type OfflineActivationResponse = {
-    deviceId: string;
-    offlineToken: string;
-    offlineExpiresAt: string;
-    active: boolean;
-};
-
-export type CustomerOfflineActivationResponse = {
-    sessionToken: string;
-    expiresAt: string;
-    active: boolean;
-};
-
-export type CustomerOfflineStatusResponse = {
-    active: boolean;
-    offlineEnabled: boolean;
-    expired: boolean;
-    expiresAt: string;
+    offlineEnabled?: boolean;
+    expired?: boolean;
+    offlineExpiresAt?: string | null;
 };

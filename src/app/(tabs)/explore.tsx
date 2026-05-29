@@ -27,10 +27,10 @@ export default function ExploreScreen() {
                 </View>
 
                 <View className="mb-6 rounded-3xl border border-border bg-card p-5">
-                    <Text className="mb-4 text-lg font-black text-card-foreground">Preparação para operar offline</Text>
+                    <Text className="mb-4 text-lg font-black text-card-foreground">Operação offline-first</Text>
 
                     <View className="gap-3">
-                        <StepItem number="1" title="Autorização online" description="Antes de ficar sem internet, o usuário prepara o app e recebe uma autorização temporária." />
+                        <StepItem number="1" title="Salvar local" description="Pedidos, catálogo e vendas entram primeiro no banco local do aparelho." />
 
                         <StepItem number="2" title="Uso local" description="Com a rede indisponível, o app continua criando pedidos, QR Codes e registros pendentes." />
 

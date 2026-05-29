@@ -1,11 +1,9 @@
 import { router, type Href } from "expo-router";
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
-
-import { clearSession, getOrCreateDeviceId, getStoredUser, getToken, saveCustomerOfflineSession, saveSellerOfflineSession, saveToken, saveUser } from "../lib/secure-storage";
-
-import { activateCustomerOffline, activateSellerOffline, login as loginRequest, me, registerCustomer, registerSeller } from "../services/auth-service";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
 import { clearLocalWorkspace } from "../database/repositories/local-workspace-repository";
+import { clearSession, getOrCreateDeviceId, getStoredUser, getToken, saveToken, saveUser } from "../lib/secure-storage";
+import { login as loginRequest, me, registerCustomer, registerSeller } from "../services/auth-service";
 import { AuthResponse, LoginRequest, RegisterCustomerRequest, RegisterSellerRequest, UserResponse } from "../types/auth";
 
 type AuthContextValue = {
@@ -18,7 +16,6 @@ type AuthContextValue = {
     signupCustomer: (body: RegisterCustomerRequest) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
-    activateOffline: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,10 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setToken(storedToken);
             setUser(storedUser);
 
-            const freshUser = await me();
+            try {
+                const freshUser = await me();
 
-            setUser(freshUser);
-            await saveUser(freshUser);
+                setUser(freshUser);
+                await saveUser(freshUser);
+            } catch (err) {
+                console.warn("Não foi possível atualizar o usuário online. Mantendo sessão local.", err);
+            }
         } catch {
             await clearSession();
             setToken(null);
@@ -117,24 +118,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await saveUser(freshUser);
     }
 
-    const activateOffline = useCallback(async () => {
-        if (!user) {
-            throw new Error("Usuário não autenticado.");
-        }
-
-        if (user.role === "SELLER") {
-            const response = await activateSellerOffline();
-
-            await saveSellerOfflineSession(response.offlineToken, response.offlineExpiresAt);
-
-            return;
-        }
-
-        const response = await activateCustomerOffline();
-
-        await saveCustomerOfflineSession(response.sessionToken, response.expiresAt);
-    }, [user]);
-
     async function logout() {
         await clearSession();
         await clearLocalWorkspace();
@@ -156,9 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             signupCustomer,
             logout,
             refreshUser,
-            activateOffline,
         }),
-        [user, token, loading, activateOffline],
+        [user, token, loading],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

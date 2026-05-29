@@ -4,10 +4,6 @@ const KEYS = {
     token: "signal.jwt",
     user: "signal.user",
     deviceId: "signal.device_id",
-    sellerOfflineToken: "signal.seller_offline_token",
-    sellerOfflineExpiresAt: "signal.seller_offline_expires_at",
-    customerOfflineToken: "signal.customer_offline_token",
-    customerOfflineExpiresAt: "signal.customer_offline_expires_at",
 };
 
 export async function saveToken(token: string) {
@@ -27,16 +23,6 @@ export async function getStoredUser<T>() {
     return raw ? (JSON.parse(raw) as T) : null;
 }
 
-export async function saveSellerOfflineSession(token: string, expiresAt: string) {
-    await SecureStore.setItemAsync(KEYS.sellerOfflineToken, token);
-    await SecureStore.setItemAsync(KEYS.sellerOfflineExpiresAt, expiresAt);
-}
-
-export async function saveCustomerOfflineSession(token: string, expiresAt: string) {
-    await SecureStore.setItemAsync(KEYS.customerOfflineToken, token);
-    await SecureStore.setItemAsync(KEYS.customerOfflineExpiresAt, expiresAt);
-}
-
 export async function getOrCreateDeviceId() {
     const stored = await SecureStore.getItemAsync(KEYS.deviceId);
 
@@ -52,7 +38,7 @@ export async function getOrCreateDeviceId() {
 }
 
 export async function clearSession() {
-    await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user), SecureStore.deleteItemAsync(KEYS.sellerOfflineToken), SecureStore.deleteItemAsync(KEYS.sellerOfflineExpiresAt), SecureStore.deleteItemAsync(KEYS.customerOfflineToken), SecureStore.deleteItemAsync(KEYS.customerOfflineExpiresAt)]);
+    await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user)]);
 }
 
 export async function regenerateDeviceId() {
@@ -61,8 +47,4 @@ export async function regenerateDeviceId() {
     await SecureStore.setItemAsync(KEYS.deviceId, generated);
 
     return generated;
-}
-
-export async function clearOfflineTokens() {
-    await Promise.all([SecureStore.deleteItemAsync(KEYS.sellerOfflineToken), SecureStore.deleteItemAsync(KEYS.sellerOfflineExpiresAt), SecureStore.deleteItemAsync(KEYS.customerOfflineToken), SecureStore.deleteItemAsync(KEYS.customerOfflineExpiresAt)]);
 }
