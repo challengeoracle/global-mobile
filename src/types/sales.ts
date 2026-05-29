@@ -25,7 +25,7 @@ export type CatalogResponse = {
     categories: CatalogCategory[];
 };
 
-export type CatalogSyncOperation = "PRODUCT_CREATE" | "PRODUCT_UPDATE" | "PRODUCT_DEACTIVATE" | "STOCK_UPDATE";
+export type CatalogSyncOperation = "CATEGORY_CREATE" | "CATEGORY_UPDATE" | "CATEGORY_DEACTIVATE" | "PRODUCT_CREATE" | "PRODUCT_UPDATE" | "PRODUCT_DEACTIVATE" | "STOCK_UPDATE";
 
 export type CatalogSyncItem = {
     operation: CatalogSyncOperation;

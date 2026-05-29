@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { SortDirection } from "@/src/components/catalog/catalog-toolbar";
+import { CategoryFormValues } from "@/src/components/catalog/category-form-modal";
 import { ProductFormValues } from "@/src/components/catalog/product-form-modal";
 import { useAuth } from "@/src/contexts/auth-context";
-import { adjustLocalProductStock, createLocalProduct, deactivateLocalProduct, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
+import { adjustLocalProductStock, createLocalCategory, createLocalProduct, deactivateLocalCategory, deactivateLocalProduct, updateLocalCategory, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
 import { enqueueCatalogChange, getPendingCatalogChanges, markCatalogChangeRejected, markCatalogChangeSynced } from "@/src/database/repositories/sync-queue-repository";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
 import { syncCatalog } from "@/src/services/sales-service";
-import { CatalogProduct, CatalogSyncItem } from "@/src/types/sales";
+import { CatalogCategory, CatalogProduct, CatalogSyncItem } from "@/src/types/sales";
 import { useCatalog } from "./use-catalog";
 
 function now() {
     return new Date().toISOString();
 }
 
-// Auxiliar para diminuir linhas repetitivas na lógica do switch de ordenação
 function sortByName(a: CatalogProduct, b: CatalogProduct, invert = false) {
     return invert ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
 }
@@ -38,7 +38,6 @@ export function useCatalogScreen() {
     const [detailsVisible, setDetailsVisible] = useState(false);
     const [formVisible, setFormVisible] = useState(false);
     const [stockVisible, setStockVisible] = useState(false);
-
     const [formMode, setFormMode] = useState<"create" | "edit">("create");
 
     const [search, setSearch] = useState("");
@@ -49,7 +48,10 @@ export function useCatalogScreen() {
     const [message, setMessage] = useState("");
     const [pendingCount, setPendingCount] = useState(0);
 
-    // Gerenciador inteligente de ordenação
+    const [categoryFormVisible, setCategoryFormVisible] = useState(false);
+    const [categoryFormMode, setCategoryFormMode] = useState<"create" | "edit">("create");
+    const [selectedCategory, setSelectedCategory] = useState<CatalogCategory | null>(null);
+
     const products = useMemo(() => {
         const baseProducts = selectedCategoryId ? (catalog.categories.find((category) => category.id === selectedCategoryId)?.products ?? []) : catalog.categories.flatMap((category) => category.products);
 
@@ -61,18 +63,14 @@ export function useCatalogScreen() {
         });
 
         return [...filtered].sort((a, b) => {
-            // Prioridade 1: Preço
             if (priceSort === "ASC") return b.price - a.price;
             if (priceSort === "DESC") return a.price - b.price;
 
-            // Prioridade 2: Estoque
             if (stockSort === "ASC") return b.stockQuantity - a.stockQuantity;
             if (stockSort === "DESC") return a.stockQuantity - b.stockQuantity;
 
-            // Prioridade 3: Alfabética Explícita (Z-A ou A-Z)
             if (nameSort === "DESC") return sortByName(a, b, true);
 
-            // Padrão do sistema: Se nada estiver ativo ou nameSort for "ASC", ordena de A-Z
             return sortByName(a, b, false);
         });
     }, [catalog.categories, selectedCategoryId, search, nameSort, priceSort, stockSort]);
@@ -85,11 +83,17 @@ export function useCatalogScreen() {
     async function reloadLocalState(successMessage?: string) {
         await catalog.loadLocalCatalog();
         await refreshPendingCount();
-        if (successMessage) setMessage(successMessage);
+
+        if (successMessage) {
+            setMessage(successMessage);
+        }
     }
 
     async function addCatalogQueue(change: Omit<CatalogSyncItem, "localUpdatedAt">) {
-        await enqueueCatalogChange({ ...change, localUpdatedAt: now() });
+        await enqueueCatalogChange({
+            ...change,
+            localUpdatedAt: now(),
+        });
     }
 
     useEffect(() => {
@@ -99,6 +103,14 @@ export function useCatalogScreen() {
     async function refreshCatalog() {
         try {
             setMessage("");
+
+            if (!network.isConnected) {
+                await catalog.loadLocalCatalog();
+                await refreshPendingCount();
+                setMessage("Sem conexão. Catálogo carregado localmente.");
+                return;
+            }
+
             await catalog.syncCatalogFromApi();
             await refreshPendingCount();
             setMessage("Catálogo atualizado.");
@@ -110,16 +122,19 @@ export function useCatalogScreen() {
     async function syncPendingChanges() {
         try {
             setMessage("");
+
             if (!network.isConnected) {
                 setMessage("Sem conexão. Alterações seguem salvas.");
                 return;
             }
+
             if (!user?.deviceId) {
                 setMessage("Device ID não encontrado.");
                 return;
             }
 
             const pending = await getPendingCatalogChanges();
+
             if (!pending.length) {
                 setMessage("Nada para sincronizar.");
                 return;
@@ -133,9 +148,11 @@ export function useCatalogScreen() {
             for (let index = 0; index < pending.length; index++) {
                 const queueItem = pending[index];
                 const result = response.results[index];
+
                 if (!result) continue;
 
                 const synced = result.status === "APPLIED" || result.status === "DUPLICATE";
+
                 if (synced) {
                     await markCatalogChangeSynced(queueItem.queueId, result.message);
                 } else {
@@ -151,28 +168,32 @@ export function useCatalogScreen() {
         }
     }
 
-    // Gerenciadores de estado dos modais secundários
     function openProduct(product: CatalogProduct) {
         setSelectedProduct(product);
         setDetailsVisible(true);
     }
+
     function openCreate() {
         setSelectedProduct(null);
         setFormMode("create");
         setFormVisible(true);
     }
+
     function openEdit() {
         setFormMode("edit");
         setDetailsVisible(false);
         setFormVisible(true);
     }
+
     function openStock() {
         setDetailsVisible(false);
         setStockVisible(true);
     }
 
     async function submitProduct(values: ProductFormValues) {
-        if (!catalog.catalogStoreId) throw new Error("Store ID do catálogo não encontrado.");
+        if (!catalog.catalogStoreId) {
+            throw new Error("Store ID do catálogo não encontrado.");
+        }
 
         const price = Number(values.price);
         const stockQuantity = Number(values.stockQuantity);
@@ -186,6 +207,7 @@ export function useCatalogScreen() {
                 price,
                 stockQuantity,
             });
+
             await addCatalogQueue({
                 operation: "PRODUCT_CREATE",
                 categoryId: values.categoryId,
@@ -205,6 +227,7 @@ export function useCatalogScreen() {
                 price,
                 stockQuantity,
             });
+
             await addCatalogQueue({
                 operation: "PRODUCT_UPDATE",
                 productId: selectedProduct.id,
@@ -215,35 +238,111 @@ export function useCatalogScreen() {
                 stockQuantity,
             });
         }
-        await reloadLocalState("Alteração salva.");
+
+        await reloadLocalState("Produto salvo offline.");
     }
 
     async function adjustStock(quantityDelta: number) {
         if (!selectedProduct) return;
+
         await adjustLocalProductStock(selectedProduct.id, quantityDelta);
+
         await addCatalogQueue({
             operation: "STOCK_UPDATE",
             productId: selectedProduct.id,
             quantityDelta,
         });
-        await reloadLocalState("Estoque ajustado.");
+
+        await reloadLocalState("Estoque ajustado offline.");
     }
 
     async function deactivateProduct() {
         if (!selectedProduct) return;
+
         await deactivateLocalProduct(selectedProduct.id);
+
         await addCatalogQueue({
             operation: "PRODUCT_DEACTIVATE",
             productId: selectedProduct.id,
         });
+
         setDetailsVisible(false);
-        await reloadLocalState("Produto desativado.");
+        await reloadLocalState("Produto desativado offline.");
+    }
+
+    function openCreateCategory() {
+        setSelectedCategory(null);
+        setCategoryFormMode("create");
+        setCategoryFormVisible(true);
+    }
+
+    function openEditCategory(category: CatalogCategory) {
+        setSelectedCategory(category);
+        setCategoryFormMode("edit");
+        setCategoryFormVisible(true);
+    }
+
+    async function submitCategory(values: CategoryFormValues) {
+        if (categoryFormMode === "create") {
+            const categoryId = await createLocalCategory({
+                name: values.name,
+                description: values.description || null,
+            });
+
+            await addCatalogQueue({
+                operation: "CATEGORY_CREATE",
+                categoryId,
+                name: values.name,
+                description: values.description || undefined,
+            });
+
+            await reloadLocalState("Categoria salva offline.");
+            return;
+        }
+
+        if (categoryFormMode === "edit" && selectedCategory) {
+            await updateLocalCategory({
+                categoryId: selectedCategory.id,
+                name: values.name,
+                description: values.description || null,
+            });
+
+            await addCatalogQueue({
+                operation: "CATEGORY_UPDATE",
+                categoryId: selectedCategory.id,
+                name: values.name,
+                description: values.description || undefined,
+            });
+
+            await reloadLocalState("Categoria atualizada offline.");
+        }
+    }
+
+    async function removeCategory(category: CatalogCategory) {
+        if (category.products.length > 0) {
+            setMessage("Não desative uma categoria com produtos. Mova ou desative os produtos antes.");
+            return;
+        }
+
+        await deactivateLocalCategory(category.id);
+
+        await addCatalogQueue({
+            operation: "CATEGORY_DEACTIVATE",
+            categoryId: category.id,
+        });
+
+        if (selectedCategoryId === category.id) {
+            setSelectedCategoryId(null);
+        }
+
+        await reloadLocalState("Categoria desativada offline.");
     }
 
     return {
         user,
         network,
         isSeller,
+
         categories: catalog.categories,
         loading: catalog.loading,
         refreshing: catalog.refreshing,
@@ -251,8 +350,10 @@ export function useCatalogScreen() {
         lastSyncAt: catalog.lastSyncAt,
         catalogStoreId: catalog.catalogStoreId,
         loadLocalCatalog: catalog.loadLocalCatalog,
+
         selectedCategoryId,
         setSelectedCategoryId,
+
         selectedProduct,
         detailsVisible,
         setDetailsVisible,
@@ -261,6 +362,7 @@ export function useCatalogScreen() {
         stockVisible,
         setStockVisible,
         formMode,
+
         search,
         setSearch,
         nameSort,
@@ -269,11 +371,14 @@ export function useCatalogScreen() {
         setPriceSort,
         stockSort,
         setStockSort,
+
         products,
         message,
         pendingCount,
+
         refreshCatalog,
         syncPendingChanges,
+
         openProduct,
         openCreate,
         openEdit,
@@ -281,5 +386,14 @@ export function useCatalogScreen() {
         submitProduct,
         adjustStock,
         deactivateProduct,
+
+        categoryFormVisible,
+        setCategoryFormVisible,
+        categoryFormMode,
+        selectedCategory,
+        openCreateCategory,
+        openEditCategory,
+        submitCategory,
+        removeCategory,
     };
 }

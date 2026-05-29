@@ -358,17 +358,6 @@ export async function saveCatalogFromQr(payload: CatalogQrPayload) {
     return payload.storeId;
 }
 
-export async function upsertLocalCategory(category: CategoryResponse) {
-    await db.runAsync(
-        `
-    INSERT OR REPLACE INTO categories (
-      id, name, description, active, created_at
-    ) VALUES (?, ?, ?, ?, ?)
-    `,
-        [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? new Date().toISOString()],
-    );
-}
-
 export async function saveCategories(categories: CategoryResponse[]) {
     await db.withTransactionAsync(async () => {
         for (const category of categories) {
@@ -382,4 +371,53 @@ export async function saveCategories(categories: CategoryResponse[]) {
             );
         }
     });
+}
+
+export async function createLocalCategory(params: { name: string; description?: string | null }) {
+    const categoryId = `local-category-${randomUUID()}`;
+    const now = new Date().toISOString();
+
+    await db.runAsync(
+        `
+        INSERT INTO categories (
+            id, name, description, active, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        `,
+        [categoryId, params.name, params.description ?? null, 1, now],
+    );
+
+    return categoryId;
+}
+
+export async function upsertLocalCategory(params: { id: string; name: string; description?: string | null; active?: boolean; createdAt?: string | null }) {
+    await db.runAsync(
+        `
+        INSERT OR REPLACE INTO categories (
+            id, name, description, active, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        `,
+        [params.id, params.name, params.description ?? null, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString()],
+    );
+}
+
+export async function updateLocalCategory(params: { categoryId: string; name: string; description?: string | null }) {
+    await db.runAsync(
+        `
+        UPDATE categories
+        SET name = ?, description = ?
+        WHERE id = ?
+        `,
+        [params.name, params.description ?? null, params.categoryId],
+    );
+}
+
+export async function deactivateLocalCategory(categoryId: string) {
+    await db.runAsync(
+        `
+        UPDATE categories
+        SET active = 0
+        WHERE id = ?
+        `,
+        [categoryId],
+    );
 }

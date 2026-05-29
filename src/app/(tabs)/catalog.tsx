@@ -112,6 +112,8 @@ export default function CatalogScreen() {
                         onStockSortChange={catalog.setStockSort}
                         onRefresh={catalog.refreshCatalog}
                         onSync={catalog.syncPendingChanges}
+                        onDeleteCategory={catalog.removeCategory}
+                        onSubmitCategory={catalog.submitCategory} // Passando o novo método unificado para o Toolbar
                     />
 
                     {catalog.message || catalog.error ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{catalog.message || catalog.error}</Text> : null}
@@ -127,6 +129,8 @@ export default function CatalogScreen() {
                             <Pressable onPress={() => setQrVisible(true)} className="h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card">
                                 <Ionicons name="qr-code-outline" size={18} color={iconColor} />
                             </Pressable>
+
+                            {/* Botão de criar Categoria removido daqui */}
 
                             <Pressable onPress={catalog.openCreate} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
                                 <Ionicons name="add" size={18} color={whiteIcon} />
@@ -151,6 +155,8 @@ export default function CatalogScreen() {
             </ScrollView>
 
             <CatalogQrModal visible={qrVisible} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={() => setQrVisible(false)} />
+
+            {/* CategoryFormModal removido daqui, pois agora é gerenciado pelo CatalogToolbar */}
 
             <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
 

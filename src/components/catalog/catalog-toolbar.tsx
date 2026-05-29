@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 
 import { BottomSheetModal } from "@/src/components/ui/bottom-sheet-modal";
 import { CatalogCategory } from "@/src/types/sales";
+import { CategoryFormModal, CategoryFormValues } from "./category-form-modal";
 
 export type SortDirection = "NONE" | "ASC" | "DESC";
 
@@ -27,6 +28,9 @@ type Props = {
     onStockSortChange: (value: SortDirection) => void;
     onRefresh: () => void;
     onSync: () => void;
+    onDeleteCategory?: (category: CatalogCategory) => void;
+    // Callback unificado para salvar (criação e edição)
+    onSubmitCategory?: (values: CategoryFormValues, mode: "create" | "edit", categoryId?: string) => Promise<void>;
 };
 
 function nextSort(value: SortDirection): SortDirection {
@@ -76,17 +80,23 @@ function SortButton({ label, value, onChange, isText = false, iconColor, activeI
     );
 }
 
-export function CatalogToolbar({ categories, selectedCategoryId, search, nameSort, priceSort, stockSort, isConnected, networkLabel, refreshing, pendingCount, isSeller, onSearchChange, onCategoryChange, onNameSortChange, onPriceSortChange, onStockSortChange, onRefresh, onSync }: Props) {
+export function CatalogToolbar({ categories, selectedCategoryId, search, nameSort, priceSort, stockSort, isConnected, networkLabel, refreshing, pendingCount, isSeller, onSearchChange, onCategoryChange, onNameSortChange, onPriceSortChange, onStockSortChange, onRefresh, onSync, onDeleteCategory, onSubmitCategory }: Props) {
     const { colorScheme } = useColorScheme();
     const isDark = colorScheme === "dark";
 
-    // Ícones: branco em primary, foreground no resto
     const iconColor = isDark ? "#f8fafc" : "#0f172a";
     const primaryIconColor = "#ffffff";
     const loaderColor = isDark ? "#f8fafc" : "#0f172a";
     const placeholderColor = isDark ? "#f8fafc" : "#0f172a";
 
+    // Estado do modal de filtro de categorias
     const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+
+    // Estados do modal de formulário (criar/editar)
+    const [formVisible, setFormVisible] = useState(false);
+    const [formMode, setFormMode] = useState<"create" | "edit">("create");
+    const [formCategory, setFormCategory] = useState<CatalogCategory | null>(null);
+
     const hasPending = pendingCount > 0;
 
     const selectedCategoryName = useMemo(() => {
@@ -97,6 +107,34 @@ export function CatalogToolbar({ categories, selectedCategoryId, search, nameSor
     function selectCategory(categoryId: string | null) {
         onCategoryChange(categoryId);
         setCategoryModalVisible(false);
+    }
+
+    // Abre o formulário em modo de criação
+    function handleCreateCategory() {
+        setCategoryModalVisible(false);
+        setFormMode("create");
+        setFormCategory(null);
+        setFormVisible(true);
+    }
+
+    // Abre o formulário em modo de edição
+    function handleEditCategory(category: CatalogCategory) {
+        setCategoryModalVisible(false);
+        setFormMode("edit");
+        setFormCategory(category);
+        setFormVisible(true);
+    }
+
+    function handleDeleteCategory(category: CatalogCategory) {
+        setCategoryModalVisible(false);
+        onDeleteCategory?.(category);
+    }
+
+    // Intercepta o envio para notificar o componente pai
+    async function handleFormSubmit(values: CategoryFormValues) {
+        if (onSubmitCategory) {
+            await onSubmitCategory(values, formMode, formCategory?.id);
+        }
     }
 
     return (
@@ -160,6 +198,14 @@ export function CatalogToolbar({ categories, selectedCategoryId, search, nameSor
             <BottomSheetModal visible={categoryModalVisible} eyebrow="Filtro" title="Categoria" onClose={() => setCategoryModalVisible(false)} maxHeightClassName="max-h-[70%]">
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <View className="gap-3">
+                        {/* BOTÃO DE NOVA CATEGORIA PARA VENDEDORES */}
+                        {isSeller ? (
+                            <Pressable onPress={handleCreateCategory} className="mb-1 h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primary">
+                                <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
+                                <Text className="text-xs font-black uppercase tracking-[1px] text-white">Nova categoria</Text>
+                            </Pressable>
+                        ) : null}
+
                         <Pressable onPress={() => selectCategory(null)} className={`rounded-2xl border px-4 py-4 ${selectedCategoryId === null ? "border-primary bg-primary" : "border-border bg-card"}`}>
                             <Text className={`text-base font-black ${selectedCategoryId === null ? "text-white" : "text-card-foreground"}`}>Todas as categorias</Text>
                         </Pressable>
@@ -168,16 +214,39 @@ export function CatalogToolbar({ categories, selectedCategoryId, search, nameSor
                             const selected = selectedCategoryId === category.id;
 
                             return (
-                                <Pressable key={category.id} onPress={() => selectCategory(category.id)} className={`rounded-2xl border px-4 py-4 ${selected ? "border-primary bg-primary" : "border-border bg-card"}`}>
-                                    <Text className={`text-base font-black ${selected ? "text-white" : "text-card-foreground"}`}>{category.name}</Text>
+                                <View key={category.id} className={`rounded-2xl border px-4 py-4 ${selected ? "border-primary bg-primary" : "border-border bg-card"}`}>
+                                    <Pressable onPress={() => selectCategory(category.id)}>
+                                        <Text className={`text-base font-black ${selected ? "text-white" : "text-card-foreground"}`}>{category.name}</Text>
 
-                                    {category.description ? <Text className={`mt-1 text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{category.description}</Text> : null}
-                                </Pressable>
+                                        {category.description ? <Text className={`mt-1 text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{category.description}</Text> : null}
+                                    </Pressable>
+
+                                    {isSeller ? (
+                                        <View className="mt-4 flex-row gap-2">
+                                            <Pressable onPress={() => handleEditCategory(category)} className={`h-9 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${selected ? "bg-white/20" : "bg-muted"}`}>
+                                                <Ionicons name="create-outline" size={15} color={selected ? "#ffffff" : iconColor} />
+
+                                                <Text className={`text-xs font-black uppercase tracking-[1px] ${selected ? "text-white" : "text-card-foreground"}`}>Editar</Text>
+                                            </Pressable>
+
+                                            <Pressable onPress={() => handleDeleteCategory(category)} className={`h-9 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${selected ? "bg-white/20" : "bg-red-500/10"}`}>
+                                                <Ionicons name="trash-outline" size={15} color={selected ? "#ffffff" : "#ef4444"} />
+
+                                                <Text className={`text-xs font-black uppercase tracking-[1px] ${selected ? "text-white" : "text-red-500"}`}>Excluir</Text>
+                                            </Pressable>
+                                        </View>
+                                    ) : null}
+                                </View>
                             );
                         })}
+
+                        {categories.length === 0 ? <Text className="rounded-2xl border border-border bg-card px-4 py-4 text-center text-sm font-bold text-muted-foreground">Nenhuma categoria disponível.</Text> : null}
                     </View>
                 </ScrollView>
             </BottomSheetModal>
+
+            {/* RENDERIZAÇÃO DO MODAL DE FORMULÁRIO */}
+            <CategoryFormModal visible={formVisible} mode={formMode} initialCategory={formCategory} onClose={() => setFormVisible(false)} onSubmit={handleFormSubmit} />
         </View>
     );
 }
