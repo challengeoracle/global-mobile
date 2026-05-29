@@ -1,13 +1,13 @@
 import { randomUUID } from "expo-crypto";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/src/contexts/auth-context";
-import { buildPendingOrderPayloads, countPendingLocalOrders, markOrderRejected, markOrderSynced } from "@/src/database/repositories/order-repository";
+import { countPendingOrderSyncQueue } from "@/src/database/repositories/sync-queue-repository";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
 import { getOrCreateDeviceId } from "@/src/lib/secure-storage";
-import { syncOrders } from "@/src/services/sales-service";
-import { CatalogProduct, OrderItemRequest } from "@/src/types/sales";
 import { buildOrderQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
+import { scheduleSync, syncOrders } from "../services/sync-engine";
+import { CatalogProduct, OrderItemRequest } from "../types/sales";
 
 export type CartItem = {
     product: CatalogProduct;
@@ -25,7 +25,6 @@ export type GeneratedOrderQr = {
 export function useOrderFlow(storeId?: string | null) {
     const { user } = useAuth();
     const network = useNetworkStatus();
-    const syncingRef = useRef(false);
 
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [message, setMessage] = useState("");
@@ -42,7 +41,7 @@ export function useOrderFlow(storeId?: string | null) {
     }, [cartItems]);
 
     async function refreshPendingOrderCount() {
-        const total = await countPendingLocalOrders();
+        const total = await countPendingOrderSyncQueue();
         setPendingOrderCount(total);
         return total;
     }
@@ -51,7 +50,7 @@ export function useOrderFlow(storeId?: string | null) {
         setMessage("");
 
         if (!product.active) {
-            setMessage("Produto indisponível.");
+            setMessage("Produto indisponivel.");
             return;
         }
 
@@ -118,12 +117,12 @@ export function useOrderFlow(storeId?: string | null) {
         setMessage("");
 
         if (!storeId) {
-            setMessage("Catálogo sem loja vinculada.");
+            setMessage("Catalogo sem loja vinculada.");
             return null;
         }
 
         if (!user) {
-            setMessage("Usuário não encontrado.");
+            setMessage("Usuario nao encontrado.");
             return null;
         }
 
@@ -167,26 +166,20 @@ export function useOrderFlow(storeId?: string | null) {
         };
 
         setGeneratedOrderQr(generated);
-
-        // REMOVIDO: clearCart(); daqui.
-        // O carrinho só limpa quando o vendedor confirma a venda.
-
         setMessage("Mostre o QR Code para o vendedor confirmar a venda.");
 
         return generated;
     }
 
     async function syncPendingOrders(silent = false) {
-        if (syncingRef.current) return false;
-
         if (!network.isConnected) {
-            if (!silent) setMessage("Sem conexão. Pedidos seguem salvos.");
+            if (!silent) setMessage("Sem conexao. Pedidos seguem salvos.");
             await refreshPendingOrderCount();
             return false;
         }
 
         if (!user) {
-            if (!silent) setMessage("Usuário não encontrado.");
+            if (!silent) setMessage("Usuario nao encontrado.");
             await refreshPendingOrderCount();
             return false;
         }
@@ -198,56 +191,20 @@ export function useOrderFlow(storeId?: string | null) {
         }
 
         try {
-            syncingRef.current = true;
             setSyncing(true);
 
-            const deviceId = await getOrCreateDeviceId();
-            const pendingOrders = await buildPendingOrderPayloads();
-
-            if (!pendingOrders.length) {
-                await refreshPendingOrderCount();
-
-                if (!silent) {
-                    setMessage("Nenhum pedido pendente.");
-                }
-
-                return true;
-            }
-
-            const response = await syncOrders({
-                deviceId,
-                orders: pendingOrders.map((order) => ({
-                    localOrderId: order.localOrderId,
-                    customerId: order.customerId,
-                    offlineCreatedAt: order.offlineCreatedAt,
-                    items: order.items,
-                })),
+            const result = await syncOrders({
+                isConnected: network.isConnected,
+                canSync: user.role === "SELLER",
             });
-
-            for (const result of response.results) {
-                if (result.status === "APPLIED" || result.status === "DUPLICATE") {
-                    await markOrderSynced({
-                        localOrderId: result.localOrderId,
-                        remoteOrderId: result.orderId ?? null,
-                        orderStatus: result.orderStatus ?? null,
-                        paymentStatus: result.paymentStatus ?? null,
-                        syncStatus: result.syncStatus ?? "OFFLINE_SYNCED",
-                    });
-                } else {
-                    await markOrderRejected({
-                        localOrderId: result.localOrderId,
-                        message: result.message,
-                    });
-                }
-            }
 
             await refreshPendingOrderCount();
 
             if (!silent) {
-                setMessage("Pedidos sincronizados.");
+                setMessage(result.message);
             }
 
-            return true;
+            return result.ok;
         } catch (err) {
             await refreshPendingOrderCount();
 
@@ -258,7 +215,6 @@ export function useOrderFlow(storeId?: string | null) {
             return false;
         } finally {
             setSyncing(false);
-            syncingRef.current = false;
         }
     }
 
@@ -270,8 +226,14 @@ export function useOrderFlow(storeId?: string | null) {
         if (!network.isConnected) return;
         if (user?.role !== "SELLER") return;
 
-        syncPendingOrders(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        scheduleSync({
+            scopes: ["orders"],
+            isConnected: network.isConnected,
+            canSync: user.role === "SELLER",
+            onComplete: async () => {
+                await refreshPendingOrderCount();
+            },
+        });
     }, [network.isConnected, user?.role]);
 
     return {

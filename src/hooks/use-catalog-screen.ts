@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SortDirection } from "@/src/components/catalog/catalog-toolbar";
 import { CategoryFormValues } from "@/src/components/catalog/category-form-modal";
 import { ProductFormValues } from "@/src/components/catalog/product-form-modal";
 import { useAuth } from "@/src/contexts/auth-context";
 import { adjustLocalProductStock, createLocalCategory, createLocalProduct, deactivateLocalCategory, deactivateLocalProduct, getCatalogStoreIdFromLocal, normalizeLegacyCatalogIds, updateLocalCategory, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
-import { enqueueCatalogChange, getPendingCatalogChanges, markCatalogChangeRejected, markCatalogChangeSynced } from "@/src/database/repositories/sync-queue-repository";
+import { countPendingCatalogChanges, enqueueCatalogChange } from "@/src/database/repositories/sync-queue-repository";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
-import { syncCatalog } from "@/src/services/sales-service";
-import { CatalogCategory, CatalogProduct, CatalogSyncItem } from "@/src/types/sales";
+import { scheduleSync, syncCatalog } from "../services/sync-engine";
+import { CatalogCategory, CatalogProduct, CatalogSyncItem } from "../types/sales";
 import { useCatalog } from "./use-catalog";
 
 function now() {
@@ -31,8 +31,6 @@ export function useCatalogScreen() {
     const catalog = useCatalog({
         autoLoad: true,
     });
-
-    const syncingRef = useRef(false);
 
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
@@ -59,7 +57,7 @@ export function useCatalogScreen() {
 
         const term = search.trim().toLowerCase();
 
-        const filtered = baseProducts.filter((product) => {
+        const filtered = baseProducts.filter((product: { name: string; description: string }) => {
             if (!term) return true;
 
             return product.name.toLowerCase().includes(term) || product.description?.toLowerCase().includes(term);
@@ -79,11 +77,9 @@ export function useCatalogScreen() {
     }, [catalog.categories, selectedCategoryId, search, nameSort, priceSort, stockSort]);
 
     async function refreshPendingCount() {
-        const pending = await getPendingCatalogChanges();
-
-        setPendingCount(pending.length);
-
-        return pending.length;
+        const total = await countPendingCatalogChanges();
+        setPendingCount(total);
+        return total;
     }
 
     async function reloadLocalState(successMessage?: string) {
@@ -123,132 +119,27 @@ export function useCatalogScreen() {
             return remoteCatalog.storeId;
         }
 
-        throw new Error("Store ID não encontrado para salvar o catálogo local.");
+        throw new Error("Store ID nao encontrado para salvar o catalogo local.");
     }
 
-    async function flushPendingCatalogChanges(options?: { pullAfterSync?: boolean; silent?: boolean }) {
-        const pullAfterSync = options?.pullAfterSync ?? true;
-        const silent = options?.silent ?? false;
+    function scheduleCatalogSync() {
+        if (!network.isConnected || !isSeller) return;
 
-        if (syncingRef.current) {
-            return false;
-        }
-
-        if (!network.isConnected) {
-            if (!silent) {
-                setMessage("Sem conexão. Alterações seguem salvas.");
-            }
-
-            await refreshPendingCount();
-
-            return false;
-        }
-
-        if (!user?.deviceId) {
-            if (!silent) {
-                setMessage("Device ID não encontrado.");
-            }
-
-            await refreshPendingCount();
-
-            return false;
-        }
-
-        try {
-            syncingRef.current = true;
-
-            await normalizeLegacyCatalogIds();
-
-            const pending = await getPendingCatalogChanges();
-
-            if (!pending.length) {
+        scheduleSync({
+            scopes: ["catalog"],
+            isConnected: network.isConnected,
+            canSync: isSeller,
+            pullCatalogAfterSync: true,
+            onComplete: async () => {
+                await catalog.loadLocalCatalog();
                 await refreshPendingCount();
-
-                if (pullAfterSync && isSeller) {
-                    await catalog.pullRemoteCatalog();
-                }
-
-                if (!silent) {
-                    setMessage("Catálogo atualizado.");
-                }
-
-                return true;
-            }
-
-            const response = await syncCatalog({
-                deviceId: user.deviceId,
-                changes: pending.map(({ queueId, ...change }) => change),
-            });
-
-            let hasRejected = false;
-
-            for (let index = 0; index < pending.length; index++) {
-                const queueItem = pending[index];
-                const result = response.results[index];
-
-                if (!result) continue;
-
-                const synced = result.status === "APPLIED" || result.status === "DUPLICATE";
-
-                if (synced) {
-                    await markCatalogChangeSynced(queueItem.queueId, result.message);
-                } else {
-                    hasRejected = true;
-
-                    await markCatalogChangeRejected(queueItem.queueId, result.message);
-                }
-            }
-
-            await refreshPendingCount();
-
-            if (hasRejected) {
-                await catalog.loadLocalCatalog();
-
-                if (!silent) {
-                    setMessage("Algumas alterações foram rejeitadas. Verifique os dados e tente novamente.");
-                }
-
-                return false;
-            }
-
-            if (pullAfterSync && isSeller) {
-                await catalog.pullRemoteCatalog();
-            } else {
-                await catalog.loadLocalCatalog();
-            }
-
-            await refreshPendingCount();
-
-            if (!silent) {
-                setMessage("Mudanças sincronizadas.");
-            }
-
-            return true;
-        } catch (err) {
-            await catalog.loadLocalCatalog();
-            await refreshPendingCount();
-
-            if (!silent) {
-                setMessage(getErrorMessage(err, "Erro ao sincronizar. Alterações seguem salvas localmente."));
-            }
-
-            return false;
-        } finally {
-            syncingRef.current = false;
-        }
+            },
+        });
     }
 
     async function saveLocalAndAutoSync(successMessage: string) {
         await reloadLocalState(successMessage);
-
-        if (network.isConnected && isSeller) {
-            await flushPendingCatalogChanges({
-                pullAfterSync: true,
-                silent: true,
-            });
-
-            await refreshPendingCount();
-        }
+        scheduleCatalogSync();
     }
 
     useEffect(() => {
@@ -263,13 +154,7 @@ export function useCatalogScreen() {
     }, []);
 
     useEffect(() => {
-        if (!isSeller) return;
-        if (!network.isConnected) return;
-
-        flushPendingCatalogChanges({
-            pullAfterSync: true,
-            silent: true,
-        });
+        scheduleCatalogSync();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSeller, network.isConnected]);
 
@@ -281,16 +166,21 @@ export function useCatalogScreen() {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
 
-                setMessage("Sem conexão. Catálogo carregado localmente.");
+                setMessage("Sem conexao. Catalogo carregado localmente.");
 
                 return;
             }
 
             if (isSeller) {
-                await flushPendingCatalogChanges({
-                    pullAfterSync: true,
-                    silent: false,
+                const result = await syncCatalog({
+                    isConnected: network.isConnected,
+                    canSync: isSeller,
+                    pullCatalogAfterSync: true,
                 });
+
+                await catalog.loadLocalCatalog();
+                await refreshPendingCount();
+                setMessage(result.message);
 
                 return;
             }
@@ -298,12 +188,12 @@ export function useCatalogScreen() {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
 
-            setMessage("Catálogo local atualizado.");
+            setMessage("Catalogo local atualizado.");
         } catch (err) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
 
-            setMessage(getErrorMessage(err, "Erro ao atualizar catálogo."));
+            setMessage(getErrorMessage(err, "Erro ao atualizar catalogo."));
         }
     }
 
@@ -311,15 +201,20 @@ export function useCatalogScreen() {
         if (!isSeller) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
-            setMessage("Catálogo local atualizado.");
+            setMessage("Catalogo local atualizado.");
 
             return;
         }
 
-        await flushPendingCatalogChanges({
-            pullAfterSync: true,
-            silent: false,
+        const result = await syncCatalog({
+            isConnected: network.isConnected,
+            canSync: isSeller,
+            pullCatalogAfterSync: true,
         });
+
+        await catalog.loadLocalCatalog();
+        await refreshPendingCount();
+        setMessage(result.message);
     }
 
     function openProduct(product: CatalogProduct) {
@@ -475,7 +370,7 @@ export function useCatalogScreen() {
 
     async function removeCategory(category: CatalogCategory) {
         if (category.products.length > 0) {
-            setMessage("Não desative uma categoria com produtos. Mova ou desative os produtos antes.");
+            setMessage("Nao desative uma categoria com produtos. Mova ou desative os produtos antes.");
 
             return;
         }

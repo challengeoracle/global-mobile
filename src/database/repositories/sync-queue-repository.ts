@@ -4,182 +4,327 @@ import { db } from "../database";
 
 import { CatalogSyncItem, OrderSyncRequest } from "../../types/sales";
 
-type CatalogQueueRow = {
+type SyncQueueStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "REJECTED";
+
+type SyncQueueRow = {
     id: string;
-    operation: string;
-    product_id: string | null;
-    category_id: string | null;
-    name: string | null;
-    description: string | null;
-    price: number | null;
-    stock_quantity: number | null;
-    quantity_delta: number | null;
-    local_updated_at: string;
-    status: string;
-    message: string | null;
+    operation_id: string;
+    entity_type: string;
+    operation_type: string;
+    payload_json: string;
+    status: SyncQueueStatus;
+    attempts: number;
+    last_error: string | null;
+    created_at: string;
+    updated_at: string;
+    synced_at: string | null;
+    next_retry_at: string | null;
 };
 
-type OrderQueueRow = {
-    id: string;
-    local_order_id: string;
-    payload: string;
-    status: string;
-    message: string | null;
-    created_at: string;
-    synced_at: string | null;
+type PendingCatalogChange = CatalogSyncItem & {
+    queueId: string;
+    operationId: string;
+    entityType: string;
+    status: SyncQueueStatus;
+    attempts: number;
+    lastError?: string | null;
+};
+
+type PendingOrderSync = OrderSyncRequest["orders"][number] & {
+    queueId: string;
+    operationId: string;
+    entityType: string;
+    status: SyncQueueStatus;
+    attempts: number;
+    lastError?: string | null;
 };
 
 function now() {
     return new Date().toISOString();
 }
 
+function buildCatalogPayload(change: CatalogSyncItem) {
+    return JSON.stringify({
+        productId: change.productId ?? undefined,
+        categoryId: change.categoryId ?? undefined,
+        name: change.name ?? undefined,
+        description: change.description ?? undefined,
+        price: change.price ?? undefined,
+        stockQuantity: change.stockQuantity ?? undefined,
+        quantityDelta: change.quantityDelta ?? undefined,
+        localUpdatedAt: change.localUpdatedAt,
+    });
+}
+
+function getCatalogEntityType(operation: CatalogSyncItem["operation"]) {
+    return operation.startsWith("CATEGORY_") ? "CATEGORY" : "PRODUCT";
+}
+
+function parseCatalogRow(row: SyncQueueRow): PendingCatalogChange {
+    const payload = JSON.parse(row.payload_json) as Omit<CatalogSyncItem, "operation" | "operationId">;
+
+    return {
+        queueId: row.id,
+        operationId: row.operation_id,
+        entityType: row.entity_type,
+        operation: row.operation_type as CatalogSyncItem["operation"],
+        productId: payload.productId,
+        categoryId: payload.categoryId,
+        name: payload.name,
+        description: payload.description,
+        price: payload.price,
+        stockQuantity: payload.stockQuantity,
+        quantityDelta: payload.quantityDelta,
+        localUpdatedAt: payload.localUpdatedAt,
+        status: row.status,
+        attempts: row.attempts,
+        lastError: row.last_error,
+    };
+}
+
+function parseOrderRow(row: SyncQueueRow): PendingOrderSync {
+    const payload = JSON.parse(row.payload_json) as OrderSyncRequest["orders"][number];
+
+    return {
+        queueId: row.id,
+        operationId: row.operation_id,
+        entityType: row.entity_type,
+        localOrderId: payload.localOrderId,
+        customerId: payload.customerId,
+        offlineCreatedAt: payload.offlineCreatedAt,
+        items: payload.items,
+        status: row.status,
+        attempts: row.attempts,
+        lastError: row.last_error,
+    };
+}
+
+function getReadyQueueQuery(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    return `
+        SELECT
+            id,
+            operation_id,
+            entity_type,
+            operation_type,
+            payload_json,
+            status,
+            attempts,
+            last_error,
+            created_at,
+            updated_at,
+            synced_at,
+            next_retry_at
+        FROM ${tableName}
+        WHERE status IN ('PENDING', 'SYNCING')
+           OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+        ORDER BY created_at ASC
+    `;
+}
+
+function getPendingCountQuery(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    return `
+        SELECT COUNT(*) AS total
+        FROM ${tableName}
+        WHERE status IN ('PENDING', 'FAILED', 'SYNCING')
+    `;
+}
+
+async function markQueueItemsSyncing(tableName: "catalog_sync_queue" | "order_sync_queue", queueIds: string[]) {
+    if (!queueIds.length) {
+        return;
+    }
+
+    const placeholders = queueIds.map(() => "?").join(", ");
+    const timestamp = now();
+
+    await db.runAsync(
+        `
+            UPDATE ${tableName}
+            SET status = 'SYNCING',
+                updated_at = ?,
+                last_error = NULL
+            WHERE id IN (${placeholders})
+        `,
+        [timestamp, ...queueIds],
+    );
+}
+
+async function markQueueItemStatus(params: {
+    tableName: "catalog_sync_queue" | "order_sync_queue";
+    queueId: string;
+    status: Extract<SyncQueueStatus, "SYNCED" | "REJECTED">;
+    lastError?: string | null;
+}) {
+    const timestamp = now();
+
+    await db.runAsync(
+        `
+            UPDATE ${params.tableName}
+            SET status = ?,
+                updated_at = ?,
+                synced_at = ?,
+                next_retry_at = NULL,
+                last_error = ?
+            WHERE id = ?
+        `,
+        [params.status, timestamp, params.status === "SYNCED" ? timestamp : null, params.status === "REJECTED" ? params.lastError ?? null : null, params.queueId],
+    );
+}
+
+async function markQueueItemFailed(params: {
+    tableName: "catalog_sync_queue" | "order_sync_queue";
+    queueId: string;
+    lastError: string;
+    nextRetryAt: string;
+}) {
+    const timestamp = now();
+
+    await db.runAsync(
+        `
+            UPDATE ${params.tableName}
+            SET status = 'FAILED',
+                attempts = attempts + 1,
+                updated_at = ?,
+                next_retry_at = ?,
+                last_error = ?,
+                synced_at = NULL
+            WHERE id = ?
+        `,
+        [timestamp, params.nextRetryAt, params.lastError, params.queueId],
+    );
+}
+
 export async function enqueueCatalogChange(change: CatalogSyncItem) {
     const id = randomUUID();
+    const operationId = change.operationId ?? randomUUID();
+    const timestamp = now();
 
     await db.runAsync(
         `
             INSERT INTO catalog_sync_queue (
                 id,
-                operation,
-                product_id,
-                category_id,
-                name,
-                description,
-                price,
-                stock_quantity,
-                quantity_delta,
-                local_updated_at,
+                operation_id,
+                entity_type,
+                operation_type,
+                payload_json,
                 status,
-                message
+                attempts,
+                last_error,
+                created_at,
+                updated_at,
+                synced_at,
+                next_retry_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [id, change.operation, change.productId ?? null, change.categoryId ?? null, change.name ?? null, change.description ?? null, change.price ?? null, change.stockQuantity ?? null, change.quantityDelta ?? null, change.localUpdatedAt, "PENDING", null],
+        [id, operationId, getCatalogEntityType(change.operation), change.operation, buildCatalogPayload(change), "PENDING", 0, null, timestamp, timestamp, null, null],
     );
 
-    return id;
+    return operationId;
 }
 
 export async function getPendingCatalogChanges() {
-    const rows = await db.getAllAsync<CatalogQueueRow>(`
-        SELECT
-            id,
-            operation,
-            product_id,
-            category_id,
-            name,
-            description,
-            price,
-            stock_quantity,
-            quantity_delta,
-            local_updated_at,
-            status,
-            message
-        FROM catalog_sync_queue
-        WHERE status = 'PENDING'
-        ORDER BY local_updated_at ASC
-    `);
-
-    return rows.map((row) => ({
-        queueId: row.id,
-        operation: row.operation as CatalogSyncItem["operation"],
-        productId: row.product_id ?? undefined,
-        categoryId: row.category_id ?? undefined,
-        name: row.name ?? undefined,
-        description: row.description ?? undefined,
-        price: row.price ?? undefined,
-        stockQuantity: row.stock_quantity ?? undefined,
-        quantityDelta: row.quantity_delta ?? undefined,
-        localUpdatedAt: row.local_updated_at,
-    }));
+    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("catalog_sync_queue"), [now()]);
+    return rows.map(parseCatalogRow);
 }
 
-export async function markCatalogChangeSynced(queueId: string, message?: string | null) {
-    await db.runAsync(
-        `
-            UPDATE catalog_sync_queue
-            SET status = 'SYNCED',
-                message = ?
-            WHERE id = ?
-        `,
-        [message ?? null, queueId],
-    );
+export async function countPendingCatalogChanges() {
+    const row = await db.getFirstAsync<{ total: number }>(getPendingCountQuery("catalog_sync_queue"));
+    return row?.total ?? 0;
+}
+
+export async function markCatalogChangesSyncing(queueIds: string[]) {
+    await markQueueItemsSyncing("catalog_sync_queue", queueIds);
+}
+
+export async function markCatalogChangeSynced(queueId: string) {
+    await markQueueItemStatus({
+        tableName: "catalog_sync_queue",
+        queueId,
+        status: "SYNCED",
+    });
 }
 
 export async function markCatalogChangeRejected(queueId: string, message?: string | null) {
-    await db.runAsync(
-        `
-            UPDATE catalog_sync_queue
-            SET status = 'REJECTED',
-                message = ?
-            WHERE id = ?
-        `,
-        [message ?? null, queueId],
-    );
+    await markQueueItemStatus({
+        tableName: "catalog_sync_queue",
+        queueId,
+        status: "REJECTED",
+        lastError: message ?? null,
+    });
+}
+
+export async function markCatalogChangeFailed(queueId: string, message: string, nextRetryAt: string) {
+    await markQueueItemFailed({
+        tableName: "catalog_sync_queue",
+        queueId,
+        lastError: message,
+        nextRetryAt,
+    });
 }
 
 export async function enqueueOrderSync(localOrderId: string, payload: OrderSyncRequest["orders"][number]) {
     const id = randomUUID();
+    const timestamp = now();
 
     await db.runAsync(
         `
             INSERT INTO order_sync_queue (
                 id,
-                local_order_id,
-                payload,
+                operation_id,
+                entity_type,
+                operation_type,
+                payload_json,
                 status,
-                message,
+                attempts,
+                last_error,
                 created_at,
-                synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                updated_at,
+                synced_at,
+                next_retry_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [id, localOrderId, JSON.stringify(payload), "PENDING", null, now(), null],
+        [id, localOrderId, "ORDER", "CREATE", JSON.stringify(payload), "PENDING", 0, null, timestamp, timestamp, null, null],
     );
 
-    return id;
+    return localOrderId;
 }
 
 export async function getPendingOrderSyncQueue() {
-    return db.getAllAsync<OrderQueueRow>(`
-        SELECT
-            id,
-            local_order_id,
-            payload,
-            status,
-            message,
-            created_at,
-            synced_at
-        FROM order_sync_queue
-        WHERE status = 'PENDING'
-        ORDER BY created_at ASC
-    `);
+    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("order_sync_queue"), [now()]);
+    return rows.map(parseOrderRow);
 }
 
-export async function markOrderQueueSynced(localOrderId: string, message?: string | null) {
-    await db.runAsync(
-        `
-            UPDATE order_sync_queue
-            SET status = 'SYNCED',
-                message = ?,
-                synced_at = ?
-            WHERE local_order_id = ?
-        `,
-        [message ?? null, now(), localOrderId],
-    );
+export async function countPendingOrderSyncQueue() {
+    const row = await db.getFirstAsync<{ total: number }>(getPendingCountQuery("order_sync_queue"));
+    return row?.total ?? 0;
 }
 
-export async function markOrderQueueRejected(localOrderId: string, message?: string | null) {
-    await db.runAsync(
-        `
-            UPDATE order_sync_queue
-            SET status = 'REJECTED',
-                message = ?,
-                synced_at = ?
-            WHERE local_order_id = ?
-        `,
-        [message ?? null, now(), localOrderId],
-    );
+export async function markOrderQueueSyncing(queueIds: string[]) {
+    await markQueueItemsSyncing("order_sync_queue", queueIds);
 }
 
-export async function parseOrderQueuePayload(row: OrderQueueRow) {
-    return JSON.parse(row.payload) as OrderSyncRequest["orders"][number];
+export async function markOrderQueueSynced(queueId: string) {
+    await markQueueItemStatus({
+        tableName: "order_sync_queue",
+        queueId,
+        status: "SYNCED",
+    });
+}
+
+export async function markOrderQueueRejected(queueId: string, message?: string | null) {
+    await markQueueItemStatus({
+        tableName: "order_sync_queue",
+        queueId,
+        status: "REJECTED",
+        lastError: message ?? null,
+    });
+}
+
+export async function markOrderQueueFailed(queueId: string, message: string, nextRetryAt: string) {
+    await markQueueItemFailed({
+        tableName: "order_sync_queue",
+        queueId,
+        lastError: message,
+        nextRetryAt,
+    });
 }

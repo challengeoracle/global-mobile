@@ -1,6 +1,6 @@
 export type CatalogSyncRequest = {
     deviceId: string;
-    changes: CatalogSyncItem[];
+    changes: CatalogSyncRequestItem[];
 };
 
 export type OrderItemRequest = {
@@ -57,7 +57,9 @@ export type OrderResponse = {
 };
 
 export type OrderSyncItemResponse = {
-    localOrderId: string;
+    localId?: string | null;
+    localOrderId?: string | null;
+    remoteId?: string | null;
     orderId?: string | null;
     status: "APPLIED" | "DUPLICATE" | "REJECTED";
     message: string;
@@ -65,6 +67,8 @@ export type OrderSyncItemResponse = {
     paymentStatus?: string | null;
     syncStatus?: string | null;
     totalAmount?: number | null;
+    currentState?: SyncItemStateResponse | null;
+    syncedAt?: string | null;
 };
 
 export type OrderSyncResponse = {
@@ -142,6 +146,7 @@ export type CatalogSyncOperation = "CATEGORY_CREATE" | "CATEGORY_UPDATE" | "CATE
 
 export type CatalogSyncItem = {
     operation: CatalogSyncOperation;
+    operationId?: string;
     productId?: string;
     categoryId?: string;
     name?: string;
@@ -152,10 +157,31 @@ export type CatalogSyncItem = {
     localUpdatedAt: string;
 };
 
+export type CatalogSyncRequestItem = CatalogSyncItem & {
+    operationId: string;
+};
+
+export type SyncItemStateResponse = {
+    orderStatus?: string | null;
+    paymentStatus?: string | null;
+    syncStatus?: string | null;
+    totalAmount?: number | null;
+    productId?: string | null;
+    categoryId?: string | null;
+    stockQuantity?: number | null;
+    operation?: string | null;
+    active?: boolean | null;
+};
+
 export type CatalogSyncItemResponse = {
+    localId?: string | null;
+    operationId?: string | null;
+    remoteId?: string | null;
     productId?: string | null;
     categoryId?: string | null;
     status: "APPLIED" | "DUPLICATE" | "REJECTED";
     message: string;
     currentStockQuantity?: number | null;
+    currentState?: SyncItemStateResponse | null;
+    syncedAt?: string | null;
 };

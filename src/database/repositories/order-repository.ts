@@ -4,6 +4,7 @@ import { OrderItemRequest, OrderResponse } from "@/src/types/sales";
 import { OrderConfirmationQrPayload, OrderQrPayload } from "@/src/utils/order-qr";
 import { db } from "../database";
 import { decreaseLocalProductStock, getProductById } from "./catalog-repository";
+import { enqueueOrderSync } from "./sync-queue-repository";
 
 export type LocalOrderRow = {
     id: string;
@@ -198,6 +199,15 @@ export async function createLocalOfflineOrder(params: {
             [totalAmount, orderId],
         );
     });
+
+    if ((params.syncStatus ?? "PENDING") === "PENDING") {
+        await enqueueOrderSync(localOrderId, {
+            localOrderId,
+            customerId: params.customerId ?? undefined,
+            offlineCreatedAt,
+            items: params.items,
+        });
+    }
 
     return {
         id: orderId,
