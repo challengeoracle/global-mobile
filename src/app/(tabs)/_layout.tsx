@@ -87,6 +87,14 @@ export default function TabLayout() {
             />
 
             <Tabs.Screen
+                name="orders"
+                options={{
+                    title: "Pedidos",
+                    tabBarIcon: createTabBarIcon("book-outline"),
+                }}
+            />
+
+            <Tabs.Screen
                 name="settings"
                 options={{
                     title: "Conta",

@@ -27,8 +27,13 @@ export function useCatalog(options: UseCatalogOptions = {}) {
 
         if (localStoreId) {
             setCatalogStoreId(localStoreId);
+            return;
         }
-    }, []);
+
+        if (storeId) {
+            setCatalogStoreId(storeId);
+        }
+    }, [storeId]);
 
     const pullRemoteCatalog = useCallback(async () => {
         try {
@@ -47,8 +52,11 @@ export function useCatalog(options: UseCatalogOptions = {}) {
             return remoteCatalog;
         } catch (err) {
             const message = err instanceof Error ? err.message : "Erro ao baixar catálogo.";
+
             setError(message);
+
             await loadLocalCatalog();
+
             throw err;
         } finally {
             setRefreshing(false);
@@ -63,6 +71,7 @@ export function useCatalog(options: UseCatalogOptions = {}) {
             await loadLocalCatalog();
         } catch (err) {
             const message = err instanceof Error ? err.message : "Erro ao carregar catálogo local.";
+
             setError(message);
         } finally {
             setLoading(false);

@@ -11,6 +11,7 @@ type ProductDetailsModalProps = {
     onEdit: () => void;
     onAdjustStock: () => void;
     onDeactivate: () => void;
+    onAddToCart?: (product: CatalogProduct) => void;
 };
 
 function money(value: number) {
@@ -20,42 +21,50 @@ function money(value: number) {
     });
 }
 
-export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate }: ProductDetailsModalProps) {
+export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate, onAddToCart }: ProductDetailsModalProps) {
     if (!product) return null;
 
+    const outOfStock = product.stockQuantity <= 0;
+
     return (
-        <BottomSheetModal visible={visible} eyebrow="Produto" title={product.name} onClose={onClose}>
-            {product.description ? <Text className="mb-5 text-base leading-7 text-muted-foreground">{product.description}</Text> : null}
+        <BottomSheetModal visible={visible} eyebrow="Detalhes" title={product.name} onClose={onClose} maxHeightClassName="max-h-[80%]">
+            <View className="gap-4">
+                {product.description ? <Text className="text-base leading-6 text-muted-foreground">{product.description}</Text> : null}
 
-            <View className="mb-5 flex-row gap-3">
-                <View className="flex-1 rounded-3xl border border-border bg-card p-4">
-                    <Text className="text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preço</Text>
+                <View className="rounded-3xl border border-border bg-card p-4">
+                    <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-bold text-muted-foreground">Preço</Text>
 
-                    <Text className="mt-2 text-xl font-black text-primary">{money(product.price)}</Text>
+                        <Text className="text-lg font-black text-card-foreground">{money(product.price)}</Text>
+                    </View>
+
+                    <View className="mt-3 flex-row items-center justify-between">
+                        <Text className="text-sm font-bold text-muted-foreground">Estoque</Text>
+
+                        <Text className={`text-lg font-black ${outOfStock ? "text-red-500" : "text-card-foreground"}`}>{product.stockQuantity}</Text>
+                    </View>
                 </View>
 
-                <View className="flex-1 rounded-3xl border border-border bg-card p-4">
-                    <Text className="text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Estoque</Text>
+                {isSeller ? (
+                    <View className="gap-3">
+                        <Pressable onPress={onEdit} className="h-14 items-center justify-center rounded-2xl bg-primary">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-white">Editar produto</Text>
+                        </Pressable>
 
-                    <Text className="mt-2 text-xl font-black text-card-foreground">{product.stockQuantity}</Text>
-                </View>
+                        <Pressable onPress={onAdjustStock} className="h-14 items-center justify-center rounded-2xl border border-border bg-card">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">Ajustar estoque</Text>
+                        </Pressable>
+
+                        <Pressable onPress={onDeactivate} className="h-14 items-center justify-center rounded-2xl bg-red-500/10">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-red-500">Desativar produto</Text>
+                        </Pressable>
+                    </View>
+                ) : (
+                    <Pressable onPress={() => onAddToCart?.(product)} disabled={outOfStock} className="h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-50">
+                        <Text className="text-sm font-black uppercase tracking-[2px] text-white">{outOfStock ? "Sem estoque" : "Adicionar ao pedido"}</Text>
+                    </Pressable>
+                )}
             </View>
-
-            {isSeller ? (
-                <View className="gap-3">
-                    <Pressable onPress={onEdit} className="h-14 items-center justify-center rounded-2xl bg-primary active:opacity-90">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-white">Editar produto</Text>
-                    </Pressable>
-
-                    <Pressable onPress={onAdjustStock} className="h-14 items-center justify-center rounded-2xl border border-border bg-card active:opacity-90">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">Ajustar estoque</Text>
-                    </Pressable>
-
-                    <Pressable onPress={onDeactivate} className="h-14 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 active:opacity-90">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-red-500">Desativar produto</Text>
-                    </Pressable>
-                </View>
-            ) : null}
         </BottomSheetModal>
     );
 }

@@ -6,20 +6,27 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { CatalogQrModal } from "@/src/components/catalog/catalog-qr-modal";
 import { CatalogScannerModal } from "@/src/components/catalog/catalog-scanner-modal";
 import { CatalogToolbar } from "@/src/components/catalog/catalog-toolbar";
+import { CategoryFormModal } from "@/src/components/catalog/category-form-modal";
 import { CustomerCatalogImportScreen } from "@/src/components/catalog/customer-catalog-import-screen";
 import { CustomerCatalogModal } from "@/src/components/catalog/customer-catalog-modal";
 import { ProductCard } from "@/src/components/catalog/product-card";
 import { ProductDetailsModal } from "@/src/components/catalog/product-details-modal";
 import { ProductFormModal } from "@/src/components/catalog/product-form-modal";
 import { StockAdjustModal } from "@/src/components/catalog/stock-adjust-modal";
+import { CartModal } from "@/src/components/orders/cart-modal";
+import { OrderQrModal } from "@/src/components/orders/order-qr-modal";
+import { OrderScannerModal } from "@/src/components/orders/order-scanner-modal";
 import { PageHeader } from "@/src/components/ui/page-header";
 
 import { clearCatalog } from "@/src/database/repositories/catalog-repository";
 import { useCatalogScreen } from "@/src/hooks/use-catalog-screen";
+import { useOrderFlow } from "@/src/hooks/use-order-flow";
 import { buildCatalogQrPayload, encodeCatalogQr } from "@/src/utils/catalog-qr";
 
 export default function CatalogScreen() {
     const catalog = useCatalogScreen();
+    const orders = useOrderFlow(catalog.catalogStoreId);
+
     const { colorScheme } = useColorScheme();
 
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
@@ -28,6 +35,9 @@ export default function CatalogScreen() {
     const [qrVisible, setQrVisible] = useState(false);
     const [scannerVisible, setScannerVisible] = useState(false);
     const [customerCatalogVisible, setCustomerCatalogVisible] = useState(false);
+    const [cartVisible, setCartVisible] = useState(false);
+    const [orderQrVisible, setOrderQrVisible] = useState(false);
+    const [orderScannerVisible, setOrderScannerVisible] = useState(false);
 
     const qrData = useMemo(() => {
         if (!catalog.catalogStoreId || catalog.categories.length === 0) {
@@ -53,9 +63,29 @@ export default function CatalogScreen() {
     }, [catalog.catalogStoreId, catalog.categories]);
 
     async function handleClearCustomerCatalog() {
+        orders.clearCart();
         await clearCatalog();
         await catalog.loadLocalCatalog();
         setCustomerCatalogVisible(false);
+    }
+
+    async function handleGenerateOrderQr() {
+        const generated = await orders.generateOrderQr();
+
+        if (generated) {
+            setCartVisible(false);
+            setOrderQrVisible(true);
+            await catalog.loadLocalCatalog();
+        }
+    }
+
+    async function handleOrderConfirmedBySeller() {
+        await orders.refreshPendingOrderCount();
+        await catalog.loadLocalCatalog();
+
+        if (catalog.network.isConnected) {
+            await orders.syncPendingOrders(true);
+        }
     }
 
     if (catalog.loading) {
@@ -80,9 +110,33 @@ export default function CatalogScreen() {
                     }}
                 />
 
-                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} />
+                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={() => setCartVisible(true)} />
 
-                <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={false} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
+                <ProductDetailsModal
+                    visible={catalog.detailsVisible}
+                    product={catalog.selectedProduct}
+                    isSeller={false}
+                    onClose={() => catalog.setDetailsVisible(false)}
+                    onEdit={catalog.openEdit}
+                    onAdjustStock={catalog.openStock}
+                    onDeactivate={catalog.deactivateProduct}
+                    onAddToCart={(product) => {
+                        orders.addToCart(product);
+                        catalog.setDetailsVisible(false);
+                        setCartVisible(true);
+                    }}
+                />
+
+                <CartModal visible={cartVisible} items={orders.cartItems} totalAmount={orders.totalAmount} syncing={orders.syncing} message={orders.message} onClose={() => setCartVisible(false)} onRemove={orders.removeFromCart} onQuantityChange={orders.updateQuantity} onCheckout={handleGenerateOrderQr} />
+
+                <OrderQrModal
+                    visible={orderQrVisible}
+                    orderQr={orders.generatedOrderQr}
+                    onClose={() => {
+                        setOrderQrVisible(false);
+                        orders.clearGeneratedOrderQr();
+                    }}
+                />
             </View>
         );
     }
@@ -112,11 +166,13 @@ export default function CatalogScreen() {
                         onStockSortChange={catalog.setStockSort}
                         onRefresh={catalog.refreshCatalog}
                         onSync={catalog.syncPendingChanges}
+                        onEditCategory={catalog.openEditCategory}
                         onDeleteCategory={catalog.removeCategory}
-                        onSubmitCategory={catalog.submitCategory} // Passando o novo método unificado para o Toolbar
                     />
 
                     {catalog.message || catalog.error ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{catalog.message || catalog.error}</Text> : null}
+
+                    {orders.message ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{orders.message}</Text> : null}
 
                     <View className="mb-5 flex-row items-center justify-between">
                         <View>
@@ -126,11 +182,21 @@ export default function CatalogScreen() {
                         </View>
 
                         <View className="flex-row gap-2">
+                            <Pressable onPress={() => setOrderScannerVisible(true)} className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4">
+                                <Ionicons name="scan-outline" size={18} color={iconColor} />
+
+                                <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Pedido</Text>
+                            </Pressable>
+
                             <Pressable onPress={() => setQrVisible(true)} className="h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card">
                                 <Ionicons name="qr-code-outline" size={18} color={iconColor} />
                             </Pressable>
 
-                            {/* Botão de criar Categoria removido daqui */}
+                            <Pressable onPress={catalog.openCreateCategory} className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4">
+                                <Ionicons name="folder-outline" size={18} color={iconColor} />
+
+                                <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Categoria</Text>
+                            </Pressable>
 
                             <Pressable onPress={catalog.openCreate} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
                                 <Ionicons name="add" size={18} color={whiteIcon} />
@@ -156,7 +222,9 @@ export default function CatalogScreen() {
 
             <CatalogQrModal visible={qrVisible} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={() => setQrVisible(false)} />
 
-            {/* CategoryFormModal removido daqui, pois agora é gerenciado pelo CatalogToolbar */}
+            <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
+
+            <CategoryFormModal visible={catalog.categoryFormVisible} mode={catalog.categoryFormMode} initialCategory={catalog.selectedCategory} onClose={() => catalog.setCategoryFormVisible(false)} onSubmit={catalog.submitCategory} />
 
             <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
 
