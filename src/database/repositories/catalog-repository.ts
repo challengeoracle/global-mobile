@@ -1,4 +1,4 @@
-import { CatalogCategory, CatalogProduct, CatalogQrPayload, CatalogResponse } from "@/src/types/sales";
+import { CatalogCategory, CatalogProduct, CatalogQrPayload, CatalogResponse, CategoryResponse } from "@/src/types/sales";
 import { randomUUID } from "expo-crypto";
 import { db } from "../database";
 
@@ -356,4 +356,30 @@ export async function saveCatalogFromQr(payload: CatalogQrPayload) {
     });
 
     return payload.storeId;
+}
+
+export async function upsertLocalCategory(category: CategoryResponse) {
+    await db.runAsync(
+        `
+    INSERT OR REPLACE INTO categories (
+      id, name, description, active, created_at
+    ) VALUES (?, ?, ?, ?, ?)
+    `,
+        [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? new Date().toISOString()],
+    );
+}
+
+export async function saveCategories(categories: CategoryResponse[]) {
+    await db.withTransactionAsync(async () => {
+        for (const category of categories) {
+            await db.runAsync(
+                `
+                INSERT OR REPLACE INTO categories (
+                    id, name, description, active, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                `,
+                [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+            );
+        }
+    });
 }

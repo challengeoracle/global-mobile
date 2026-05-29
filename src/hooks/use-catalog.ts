@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getCatalogByStore, getMyCatalog } from "../services/sales-service";
-
-import { getCatalogFromLocal, saveCatalog } from "../database/repositories/catalog-repository";
-
+import { getCatalogFromLocal, saveCatalog, saveCategories } from "../database/repositories/catalog-repository";
+import { getCatalogByStore, getMyCatalog, getMyCategories } from "../services/sales-service";
 import { CatalogCategory } from "../types/sales";
 
 type UseCatalogOptions = {
@@ -23,7 +21,6 @@ export function useCatalog(options: UseCatalogOptions = {}) {
 
     const loadLocalCatalog = useCallback(async () => {
         const localCatalog = await getCatalogFromLocal();
-
         setCategories(localCatalog);
     }, []);
 
@@ -32,9 +29,22 @@ export function useCatalog(options: UseCatalogOptions = {}) {
             setRefreshing(true);
             setError(null);
 
-            const catalog = storeId ? await getCatalogByStore(storeId) : await getMyCatalog();
+            if (storeId) {
+                const catalog = await getCatalogByStore(storeId);
+
+                await saveCatalog(catalog);
+
+                setCatalogStoreId(catalog.storeId);
+                setLastSyncAt(catalog.syncedAt);
+
+                await loadLocalCatalog();
+                return;
+            }
+
+            const [catalog, remoteCategories] = await Promise.all([getMyCatalog(), getMyCategories()]);
 
             await saveCatalog(catalog);
+            await saveCategories(remoteCategories);
 
             setCatalogStoreId(catalog.storeId);
             setLastSyncAt(catalog.syncedAt);
@@ -44,7 +54,6 @@ export function useCatalog(options: UseCatalogOptions = {}) {
             const message = err instanceof Error ? err.message : "Erro ao sincronizar catálogo.";
 
             setError(message);
-
             await loadLocalCatalog();
         } finally {
             setRefreshing(false);

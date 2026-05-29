@@ -11,13 +11,14 @@ export type CatalogProduct = {
 
 export type CatalogCategory = {
     id: string;
+    storeId?: string | null;
     name: string;
     description?: string | null;
     active: boolean;
     createdAt?: string | null;
+    updatedAt?: string | null;
     products: CatalogProduct[];
 };
-
 export type CatalogResponse = {
     storeId: string;
     syncedAt: string;
@@ -137,4 +138,22 @@ export type CatalogQrPayload = {
             stockQuantity: number;
         }[];
     }[];
+};
+
+export type UpdateCategoryRequest = {
+    name: string;
+    description?: string | null;
+};
+
+export type CreateCategoryRequest = {
+    name: string;
+    description?: string | null;
+};
+
+export type CategoryResponse = {
+    id: string;
+    name: string;
+    description?: string | null;
+    active: boolean;
+    createdAt?: string | null;
 };

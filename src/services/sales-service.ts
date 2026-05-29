@@ -1,6 +1,6 @@
 import { salesRequest } from "../lib/api";
 
-import { CatalogResponse, CatalogSyncRequest, CatalogSyncResponse, CreateOrderRequest, OrderResponse, OrderSyncRequest, OrderSyncResponse } from "../types/sales";
+import { CatalogResponse, CatalogSyncRequest, CatalogSyncResponse, CategoryResponse, CreateCategoryRequest, CreateOrderRequest, OrderResponse, OrderSyncRequest, OrderSyncResponse, UpdateCategoryRequest } from "../types/sales";
 
 export async function getMyCatalog() {
     return salesRequest<CatalogResponse>("/catalog/me", {
@@ -58,6 +58,47 @@ export async function getOrdersByStore(storeId: string) {
 
 export async function getOrdersByCustomer(customerId: string) {
     return salesRequest<OrderResponse[]>(`/order/customer/${customerId}`, {
+        auth: true,
+    });
+}
+
+export async function getMyCategories() {
+    return salesRequest<CategoryResponse[]>("/category/me", {
+        auth: true,
+    });
+}
+
+export async function updateCategory(categoryId: string, body: UpdateCategoryRequest) {
+    return salesRequest<CategoryResponse>(`/category/${categoryId}`, {
+        method: "PUT",
+        auth: true,
+        body,
+    });
+}
+
+export async function deactivateCategory(categoryId: string) {
+    return salesRequest<void>(`/category/${categoryId}`, {
+        method: "DELETE",
+        auth: true,
+    });
+}
+
+export async function getCategories() {
+    return salesRequest<CategoryResponse[]>("/category", {
+        auth: true,
+    });
+}
+
+export async function createCategory(body: CreateCategoryRequest) {
+    return salesRequest<CategoryResponse>("/category", {
+        method: "POST",
+        auth: true,
+        body,
+    });
+}
+
+export async function getCategoryById(categoryId: string) {
+    return salesRequest(`/category/${categoryId}`, {
         auth: true,
     });
 }

@@ -76,5 +76,6 @@ export async function runMigrations() {
             created_at TEXT NOT NULL,
             synced_at TEXT
         );
+
     `);
 }
