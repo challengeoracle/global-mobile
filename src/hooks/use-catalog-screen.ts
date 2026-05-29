@@ -5,10 +5,10 @@ import { ProductFormValues } from "@/src/components/catalog/product-form-modal";
 import { useAuth } from "@/src/contexts/auth-context";
 import { adjustLocalProductStock, createLocalProduct, deactivateLocalProduct, updateLocalProduct } from "@/src/database/repositories/catalog-repository";
 import { enqueueCatalogChange, getPendingCatalogChanges, markCatalogChangeRejected, markCatalogChangeSynced } from "@/src/database/repositories/sync-queue-repository";
-import { useCatalog } from "@/src/hooks/use-catalog";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
 import { syncCatalog } from "@/src/services/sales-service";
 import { CatalogProduct, CatalogSyncItem } from "@/src/types/sales";
+import { useCatalog } from "./use-catalog";
 
 function now() {
     return new Date().toISOString();
@@ -26,9 +26,11 @@ function getErrorMessage(err: unknown, fallback: string) {
 export function useCatalogScreen() {
     const { user } = useAuth();
     const network = useNetworkStatus();
-    const catalog = useCatalog();
-
     const isSeller = user?.role === "SELLER";
+
+    const catalog = useCatalog({
+        autoLoad: !!isSeller,
+    });
 
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);

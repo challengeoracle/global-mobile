@@ -30,11 +30,13 @@ export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdi
             <View className="mb-5 flex-row gap-3">
                 <View className="flex-1 rounded-3xl border border-border bg-card p-4">
                     <Text className="text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preço</Text>
+
                     <Text className="mt-2 text-xl font-black text-primary">{money(product.price)}</Text>
                 </View>
 
                 <View className="flex-1 rounded-3xl border border-border bg-card p-4">
                     <Text className="text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Estoque</Text>
+
                     <Text className="mt-2 text-xl font-black text-card-foreground">{product.stockQuantity}</Text>
                 </View>
             </View>
@@ -42,7 +44,7 @@ export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdi
             {isSeller ? (
                 <View className="gap-3">
                     <Pressable onPress={onEdit} className="h-14 items-center justify-center rounded-2xl bg-primary active:opacity-90">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-primary-foreground">Editar produto</Text>
+                        <Text className="text-sm font-black uppercase tracking-[2px] text-white">Editar produto</Text>
                     </Pressable>
 
                     <Pressable onPress={onAdjustStock} className="h-14 items-center justify-center rounded-2xl border border-border bg-card active:opacity-90">

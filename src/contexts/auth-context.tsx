@@ -5,6 +5,7 @@ import { clearSession, getOrCreateDeviceId, getStoredUser, getToken, saveCustome
 
 import { activateCustomerOffline, activateSellerOffline, login as loginRequest, me, registerCustomer, registerSeller } from "../services/auth-service";
 
+import { clearLocalWorkspace } from "../database/repositories/local-workspace-repository";
 import { AuthResponse, LoginRequest, RegisterCustomerRequest, RegisterSellerRequest, UserResponse } from "../types/auth";
 
 type AuthContextValue = {
@@ -136,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function logout() {
         await clearSession();
+        await clearLocalWorkspace();
 
         setToken(null);
         setUser(null);

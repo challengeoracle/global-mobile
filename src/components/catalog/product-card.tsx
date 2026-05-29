@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useColorScheme } from "nativewind";
 import { Pressable, Text, View } from "react-native";
 
 import { CatalogProduct } from "@/src/types/sales";
@@ -16,6 +17,11 @@ function money(value: number) {
 }
 
 export function ProductCard({ product, onPress }: ProductCardProps) {
+    const { colorScheme } = useColorScheme();
+
+    const isDark = colorScheme === "dark";
+    const mutedIconColor = isDark ? "#94a3b8" : "#64748b";
+
     const outOfStock = product.stockQuantity <= 0;
     const lowStock = product.stockQuantity > 0 && product.stockQuantity <= 5;
 
@@ -43,7 +49,7 @@ export function ProductCard({ product, onPress }: ProductCardProps) {
                         <Text className={`text-xs font-black ${outOfStock ? "text-red-500" : "text-primary"}`}>{product.stockQuantity} un.</Text>
                     </View>
 
-                    <Ionicons name="chevron-forward" size={18} color="#71717a" style={{ marginTop: 16 }} />
+                    <Ionicons name="chevron-forward" size={18} color={mutedIconColor} style={{ marginTop: 16 }} />
                 </View>
             </View>
         </Pressable>

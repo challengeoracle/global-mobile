@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useColorScheme } from "nativewind";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { BottomSheetModal } from "@/src/components/ui/bottom-sheet-modal";
@@ -23,6 +25,14 @@ type ProductFormModalProps = {
 };
 
 export function ProductFormModal({ visible, mode, categories, initialCategoryId, initialProduct, onClose, onSubmit }: ProductFormModalProps) {
+    const { colorScheme } = useColorScheme();
+
+    const inputColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
+    const placeholderColor = colorScheme === "dark" ? "#94a3b8" : "#64748b";
+    const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
+
+    const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+
     const [categoryId, setCategoryId] = useState(initialCategoryId);
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
@@ -31,16 +41,27 @@ export function ProductFormModal({ visible, mode, categories, initialCategoryId,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const selectedCategory = useMemo(() => {
+        return categories.find((category) => category.id === categoryId) ?? null;
+    }, [categories, categoryId]);
+
     useEffect(() => {
         if (!visible) return;
 
-        setCategoryId(initialCategoryId);
+        const fallbackCategoryId = initialCategoryId || categories[0]?.id || "";
+
+        setCategoryId(fallbackCategoryId);
         setName(initialProduct?.name ?? "");
         setDescription(initialProduct?.description ?? "");
         setPrice(initialProduct ? String(initialProduct.price) : "");
         setStockQuantity(initialProduct ? String(initialProduct.stockQuantity) : "");
         setError("");
-    }, [visible, initialCategoryId, initialProduct]);
+    }, [visible, initialCategoryId, initialProduct, categories]);
+
+    function selectCategory(id: string) {
+        setCategoryId(id);
+        setCategoryModalVisible(false);
+    }
 
     async function handleSubmit() {
         try {
@@ -72,56 +93,76 @@ export function ProductFormModal({ visible, mode, categories, initialCategoryId,
     }
 
     return (
-        <BottomSheetModal visible={visible} eyebrow={mode === "create" ? "Novo item" : "Editar item"} title="Produto" onClose={onClose} maxHeightClassName="max-h-[88%]">
-            <ScrollView showsVerticalScrollIndicator={false}>
-                <View className="mb-5">
-                    <Text className="mb-3 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Categoria</Text>
+        <>
+            <BottomSheetModal visible={visible} eyebrow={mode === "create" ? "Novo item" : "Editar item"} title="Produto" onClose={onClose} maxHeightClassName="max-h-[88%]">
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    <View className="gap-4">
+                        <View>
+                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Categoria</Text>
 
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <View className="flex-row gap-2">
-                            {categories.map((category) => {
-                                const selected = category.id === categoryId;
+                            <Pressable onPress={() => setCategoryModalVisible(true)} className="h-14 flex-row items-center justify-between rounded-2xl border border-border bg-card px-4">
+                                <Text numberOfLines={1} className={`flex-1 text-base font-bold ${selectedCategory ? "text-card-foreground" : "text-muted-foreground"}`}>
+                                    {selectedCategory?.name ?? "Selecionar categoria"}
+                                </Text>
 
-                                return (
-                                    <Pressable key={category.id} onPress={() => setCategoryId(category.id)} className={`rounded-full border px-4 py-2 ${selected ? "border-primary bg-primary" : "border-border bg-card"}`}>
-                                        <Text className={`text-xs font-black uppercase tracking-[1px] ${selected ? "text-primary-foreground" : "text-card-foreground"}`}>{category.name}</Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-                    </ScrollView>
-                </View>
-
-                <View className="gap-4">
-                    <View>
-                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Nome</Text>
-                        <TextInput value={name} onChangeText={setName} placeholder="Ex: Arroz 5kg" placeholderTextColor="rgb(var(--muted-foreground))" className="h-14 rounded-2xl border border-border bg-card px-4 text-base text-card-foreground" />
-                    </View>
-
-                    <View>
-                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descrição</Text>
-                        <TextInput value={description} onChangeText={setDescription} placeholder="Descrição curta" placeholderTextColor="rgb(var(--muted-foreground))" className="h-14 rounded-2xl border border-border bg-card px-4 text-base text-card-foreground" />
-                    </View>
-
-                    <View className="flex-row gap-3">
-                        <View className="flex-1">
-                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preço</Text>
-                            <TextInput value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="8.90" placeholderTextColor="rgb(var(--muted-foreground))" className="h-14 rounded-2xl border border-border bg-card px-4 text-base text-card-foreground" />
+                                <Ionicons name="chevron-down" size={18} color={iconColor} />
+                            </Pressable>
                         </View>
 
-                        <View className="flex-1">
-                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Estoque</Text>
-                            <TextInput value={stockQuantity} onChangeText={setStockQuantity} keyboardType="numeric" placeholder="20" placeholderTextColor="rgb(var(--muted-foreground))" className="h-14 rounded-2xl border border-border bg-card px-4 text-base text-card-foreground" />
+                        <View>
+                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Nome</Text>
+
+                            <TextInput value={name} onChangeText={setName} placeholder="Ex: Carrinho de brinquedo" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                         </View>
+
+                        <View>
+                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descrição</Text>
+
+                            <TextInput value={description} onChangeText={setDescription} placeholder="Descrição curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                        </View>
+
+                        <View className="flex-row gap-3">
+                            <View className="flex-1">
+                                <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preço</Text>
+
+                                <TextInput value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="19.90" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                            </View>
+
+                            <View className="flex-1">
+                                <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Estoque</Text>
+
+                                <TextInput value={stockQuantity} onChangeText={setStockQuantity} keyboardType="numeric" placeholder="10" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                            </View>
+                        </View>
+
+                        {error ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{error}</Text> : null}
+
+                        <Pressable onPress={handleSubmit} disabled={loading} className="mb-2 mt-2 h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-60">
+                            {loading ? <ActivityIndicator color="#ffffff" /> : <Text className="text-sm font-black uppercase tracking-[2px] text-white">Salvar produto</Text>}
+                        </Pressable>
                     </View>
+                </ScrollView>
+            </BottomSheetModal>
 
-                    {error ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{error}</Text> : null}
+            <BottomSheetModal visible={categoryModalVisible} eyebrow="Selecionar" title="Categoria" onClose={() => setCategoryModalVisible(false)} maxHeightClassName="max-h-[70%]">
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    <View className="gap-3">
+                        {categories.map((category) => {
+                            const selected = category.id === categoryId;
 
-                    <Pressable onPress={handleSubmit} disabled={loading} className="mb-2 mt-2 h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-60">
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-sm font-black uppercase tracking-[2px] text-primary-foreground">Salvar produto</Text>}
-                    </Pressable>
-                </View>
-            </ScrollView>
-        </BottomSheetModal>
+                            return (
+                                <Pressable key={category.id} onPress={() => selectCategory(category.id)} className={`rounded-2xl border px-4 py-4 ${selected ? "border-primary bg-primary" : "border-border bg-card"}`}>
+                                    <Text className={`text-base font-black ${selected ? "text-white" : "text-card-foreground"}`}>{category.name}</Text>
+
+                                    {category.description ? <Text className={`mt-1 text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{category.description}</Text> : null}
+                                </Pressable>
+                            );
+                        })}
+
+                        {categories.length === 0 ? <Text className="rounded-2xl border border-border bg-card px-4 py-4 text-center text-sm font-bold text-muted-foreground">Nenhuma categoria disponível.</Text> : null}
+                    </View>
+                </ScrollView>
+            </BottomSheetModal>
+        </>
     );
 }
