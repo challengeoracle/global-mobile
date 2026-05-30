@@ -4,11 +4,13 @@ import { useColorScheme } from "nativewind";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
+import { OrderConfirmationQrModal } from "@/src/components/orders/order-confirmation-qr-modal";
 import { PageHeader } from "@/src/components/ui/page-header";
 import { useAuth } from "@/src/contexts/auth-context";
-import { getLocalOrderItems, getLocalOrders, LocalOrderItemRow, LocalOrderRow } from "@/src/database/repositories/order-repository";
+import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow } from "@/src/database/repositories/order-repository";
 import { useNetworkStatus } from "@/src/hooks/use-network-status";
 import { useOrderFlow } from "@/src/hooks/use-order-flow";
+import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
 
 function money(value: number) {
     return value.toLocaleString("pt-BR", {
@@ -18,10 +20,10 @@ function money(value: number) {
 }
 
 function statusLabel(value: string) {
-    if (value === "PENDING") return "Pendente";
+    if (value === "PENDING") return "Aguardando sincronização";
     if (value === "SYNCED") return "Sincronizado";
     if (value === "OFFLINE_SYNCED") return "Sincronizado";
-    if (value === "SELLER_CONFIRMED") return "Confirmado pelo vendedor";
+    if (value === "SELLER_CONFIRMED") return "Confirmado offline";
     if (value === "REJECTED") return "Rejeitado";
     return value;
 }
@@ -57,7 +59,6 @@ export default function OrdersScreen() {
     const { colorScheme } = useColorScheme();
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
 
-    // Puxando os hooks de Autenticação e Rede
     const { user } = useAuth();
     const network = useNetworkStatus();
     const isSeller = user?.role === "SELLER";
@@ -69,6 +70,11 @@ export default function OrdersScreen() {
     const [items, setItems] = useState<LocalOrderItemRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState("");
+    const [selectedOrderError, setSelectedOrderError] = useState<string>("");
+    const [confirmationQrVisible, setConfirmationQrVisible] = useState(false);
+    const [confirmationQrValue, setConfirmationQrValue] = useState<string | null>(null);
+    const [confirmationQrMessage, setConfirmationQrMessage] = useState<string | null>(null);
+    const [confirmationQrSynced, setConfirmationQrSynced] = useState(false);
 
     const totals = useMemo(() => {
         return orders.reduce(
@@ -92,6 +98,20 @@ export default function OrdersScreen() {
         );
     }, [orders]);
 
+    async function loadSelectedOrderState(order: LocalOrderRow | null) {
+        setSelectedOrder(order);
+
+        if (!order) {
+            setItems([]);
+            setSelectedOrderError("");
+            return;
+        }
+
+        const [orderItems, syncIssue] = await Promise.all([getLocalOrderItems(order.id), getOrderSyncIssue(order.local_order_id)]);
+        setItems(orderItems);
+        setSelectedOrderError(order.sync_status === "REJECTED" ? (syncIssue?.lastError ?? "O servidor rejeitou este pedido.") : "");
+    }
+
     async function loadOrders() {
         try {
             setLoading(true);
@@ -102,13 +122,7 @@ export default function OrdersScreen() {
 
             if (selectedOrder) {
                 const updatedSelected = localOrders.find((order) => order.id === selectedOrder.id) ?? null;
-                setSelectedOrder(updatedSelected);
-
-                if (updatedSelected) {
-                    setItems(await getLocalOrderItems(updatedSelected.id));
-                } else {
-                    setItems([]);
-                }
+                await loadSelectedOrderState(updatedSelected);
             }
         } catch (err) {
             setMessage(err instanceof Error ? err.message : "Erro ao carregar pedidos.");
@@ -118,18 +132,49 @@ export default function OrdersScreen() {
     }
 
     async function openOrder(order: LocalOrderRow) {
-        setSelectedOrder(order);
-        setItems(await getLocalOrderItems(order.id));
+        await loadSelectedOrderState(order);
     }
 
     async function closeOrder() {
-        setSelectedOrder(null);
-        setItems([]);
+        await loadSelectedOrderState(null);
     }
 
     async function handleSync() {
-        await ordersFlow.syncPendingOrders(false);
+        const result = await ordersFlow.syncPendingOrders(false);
+        setMessage(result.message);
         await loadOrders();
+    }
+
+    async function handleOpenConfirmationQr(order: LocalOrderRow) {
+        const confirmation = await buildOrderConfirmationPayloadFromLocal(order.local_order_id);
+
+        if (!confirmation.storeId) {
+            setMessage("Pedido sem loja vinculada para gerar confirmação.");
+            return;
+        }
+
+        const payload = buildOrderConfirmationQrPayload({
+            type: "OFFPAY_ORDER_CONFIRMATION",
+            version: 1,
+            localOrderId: confirmation.localOrderId,
+            storeId: confirmation.storeId,
+            customerId: confirmation.customerId,
+            sellerId: confirmation.sellerId,
+            sellerDeviceId: confirmation.sellerDeviceId,
+            remoteOrderId: confirmation.remoteOrderId,
+            confirmedAt: confirmation.confirmedAt,
+            totalAmount: confirmation.totalAmount,
+            orderStatus: confirmation.orderStatus,
+            paymentStatus: confirmation.paymentStatus,
+            syncStatus: confirmation.syncStatus,
+            message: confirmation.message,
+            items: confirmation.items,
+        });
+
+        setConfirmationQrValue(encodeOrderQr(payload));
+        setConfirmationQrMessage(confirmation.message ?? null);
+        setConfirmationQrSynced(confirmation.syncStatus === "SYNCED" || confirmation.syncStatus === "OFFLINE_SYNCED");
+        setConfirmationQrVisible(true);
     }
 
     useFocusEffect(
@@ -181,15 +226,12 @@ export default function OrdersScreen() {
 
                         <View className="mt-4 flex-row flex-wrap gap-2">
                             <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.pending} pendente(s)</Text>
-
                             <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.confirmed} confirmado(s)</Text>
-
                             <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.synced} sincronizado(s)</Text>
-
                             <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.rejected} rejeitado(s)</Text>
                         </View>
 
-                        {!isSeller ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Cliente não sincroniza venda. O pedido aparece aqui depois que você escaneia a confirmação do vendedor.</Text> : null}
+                        {!isSeller ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Cliente não sincroniza venda. O pedido aparece ou atualiza aqui quando você escaneia o QR do vendedor.</Text> : null}
 
                         {isSeller && !network.isConnected ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Sem conexão. As vendas confirmadas ficam salvas neste aparelho até voltar a internet.</Text> : null}
 
@@ -212,11 +254,11 @@ export default function OrdersScreen() {
 
                                     <View className="mt-4 flex-row flex-wrap gap-2">
                                         <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${statusClass(order.sync_status)}`}>{statusLabel(order.sync_status)}</Text>
-
                                         <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${paymentClass(order.payment_status)}`}>{paymentLabel(order.payment_status)}</Text>
-
                                         <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{orderStatusLabel(order.order_status)}</Text>
                                     </View>
+
+                                    {order.sync_status === "REJECTED" ? <Text className="mt-3 text-sm font-bold text-red-500">Toque para ver o motivo da rejeição.</Text> : null}
                                 </Pressable>
                             ))
                         ) : (
@@ -251,12 +293,19 @@ export default function OrdersScreen() {
 
                                 <View className="mt-3 flex-row flex-wrap gap-2">
                                     <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${statusClass(selectedOrder.sync_status)}`}>{statusLabel(selectedOrder.sync_status)}</Text>
-
                                     <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${paymentClass(selectedOrder.payment_status)}`}>{paymentLabel(selectedOrder.payment_status)}</Text>
-
                                     <Text className="rounded-xl bg-card px-3 py-2 text-xs font-bold text-card-foreground">{orderStatusLabel(selectedOrder.order_status)}</Text>
                                 </View>
                             </View>
+
+                            {selectedOrderError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{selectedOrderError}</Text> : null}
+
+                            {isSeller ? (
+                                <Pressable onPress={() => handleOpenConfirmationQr(selectedOrder)} className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-card">
+                                    <Ionicons name="qr-code-outline" size={18} color={iconColor} />
+                                    <Text className="text-sm font-black uppercase tracking-[1px] text-card-foreground">Mostrar QR ao cliente</Text>
+                                </Pressable>
+                            ) : null}
 
                             <View className="mt-4 gap-3">
                                 {items.map((item) => (
@@ -279,6 +328,8 @@ export default function OrdersScreen() {
                     ) : null}
                 </View>
             </ScrollView>
+
+            <OrderConfirmationQrModal visible={confirmationQrVisible} qrValue={confirmationQrValue} synced={confirmationQrSynced} message={confirmationQrMessage} onClose={() => setConfirmationQrVisible(false)} />
         </View>
     );
 }

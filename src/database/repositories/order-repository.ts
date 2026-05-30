@@ -41,8 +41,31 @@ export type PendingOrderPayload = {
     items: OrderItemRequest[];
 };
 
+export type LocalOrderSyncIssue = {
+    queueStatus: string;
+    lastError: string | null;
+    attempts: number;
+    updatedAt: string;
+};
+
 function now() {
     return new Date().toISOString();
+}
+
+function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue | null) {
+    if (syncStatus === "REJECTED") {
+        return issue?.lastError ?? "O servidor rejeitou este pedido. Revise os dados e tente novamente.";
+    }
+
+    if (syncStatus === "SYNCED" || syncStatus === "OFFLINE_SYNCED") {
+        return "Pedido sincronizado com o servidor.";
+    }
+
+    if (syncStatus === "SELLER_CONFIRMED") {
+        return "Pedido confirmado pelo vendedor e salvo offline.";
+    }
+
+    return "Pedido salvo localmente aguardando sincronizacao do vendedor.";
 }
 
 export async function getLocalOrderByLocalId(localOrderId: string) {
@@ -257,10 +280,10 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
                 order_status = ?,
                 payment_status = ?,
                 sync_status = ?,
-                synced_at = COALESCE(synced_at, ?)
+                synced_at = ?
             WHERE local_order_id = ?
             `,
-            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.remoteOrderId ? "SYNCED" : "SELLER_CONFIRMED", now(), params.payload.localOrderId],
+            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.syncStatus, params.payload.confirmedAt, params.payload.localOrderId],
         );
 
         return {
@@ -282,10 +305,27 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
         offlineCreatedAt: params.payload.confirmedAt,
         shouldDecreaseStock: false,
         remoteOrderId: params.payload.remoteOrderId ?? null,
-        syncStatus: params.payload.remoteOrderId ? "SYNCED" : "SELLER_CONFIRMED",
+        syncStatus: params.payload.syncStatus,
         orderStatus: params.payload.orderStatus,
         paymentStatus: params.payload.paymentStatus,
     });
+}
+
+export async function getOrderSyncIssue(localOrderId: string) {
+    return db.getFirstAsync<LocalOrderSyncIssue>(
+        `
+        SELECT
+            status AS queueStatus,
+            last_error AS lastError,
+            attempts,
+            updated_at AS updatedAt
+        FROM order_sync_queue
+        WHERE operation_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+        `,
+        [localOrderId],
+    );
 }
 
 export async function getLocalOrders() {
@@ -383,6 +423,7 @@ export async function buildOrderConfirmationPayloadFromLocal(localOrderId: strin
     }
 
     const items = await getLocalOrderItems(order.id);
+    const issue = await getOrderSyncIssue(localOrderId);
 
     return {
         localOrderId: order.local_order_id,
@@ -396,6 +437,7 @@ export async function buildOrderConfirmationPayloadFromLocal(localOrderId: strin
         orderStatus: order.order_status,
         paymentStatus: order.payment_status,
         syncStatus: order.sync_status,
+        message: buildOrderSyncMessage(order.sync_status, issue),
         items: items.map((item) => ({
             productId: item.product_id,
             quantity: item.quantity,

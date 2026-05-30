@@ -10,7 +10,7 @@ import { decodeOrderConfirmationQr } from "@/src/utils/order-qr";
 type Props = {
     visible: boolean;
     onClose: () => void;
-    onConfirmed: () => void | Promise<void>;
+    onConfirmed: (localOrderId: string) => void | Promise<void>;
 };
 
 export function OrderConfirmationScannerModal({ visible, onClose, onConfirmed }: Props) {
@@ -40,7 +40,7 @@ export function OrderConfirmationScannerModal({ visible, onClose, onConfirmed }:
                 customerDeviceId: deviceId,
             });
 
-            await onConfirmed();
+            await onConfirmed(payload.localOrderId);
 
             closeScanner();
         } catch (err) {
@@ -100,7 +100,7 @@ export function OrderConfirmationScannerModal({ visible, onClose, onConfirmed }:
                             <View className="rounded-3xl bg-black/70 p-5">
                                 <Text className="text-center text-base font-black text-white">Aponte para o QR do vendedor</Text>
 
-                                <Text className="mt-2 text-center text-sm leading-6 text-white/70">Isso salva o pedido confirmado no seu histórico.</Text>
+                                <Text className="mt-2 text-center text-sm leading-6 text-white/70">Isso salva ou atualiza o pedido no seu histórico local.</Text>
 
                                 {error ? <Text className="mt-4 text-center text-sm font-bold text-red-400">{error}</Text> : null}
                             </View>

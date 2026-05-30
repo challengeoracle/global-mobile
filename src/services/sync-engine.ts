@@ -1,19 +1,6 @@
 import { normalizeLegacyCatalogIds, saveCatalog } from "@/src/database/repositories/catalog-repository";
 import { markOrderRejected, markOrderSynced } from "@/src/database/repositories/order-repository";
-import {
-    countPendingCatalogChanges,
-    countPendingOrderSyncQueue,
-    getPendingCatalogChanges,
-    getPendingOrderSyncQueue,
-    markCatalogChangeFailed,
-    markCatalogChangeRejected,
-    markCatalogChangeSynced,
-    markCatalogChangesSyncing,
-    markOrderQueueFailed,
-    markOrderQueueRejected,
-    markOrderQueueSynced,
-    markOrderQueueSyncing,
-} from "@/src/database/repositories/sync-queue-repository";
+import { countPendingCatalogChanges, countPendingOrderSyncQueue, getPendingCatalogChanges, getPendingOrderSyncQueue, markCatalogChangeFailed, markCatalogChangeRejected, markCatalogChangeSynced, markCatalogChangesSyncing, markOrderQueueFailed, markOrderQueueRejected, markOrderQueueSynced, markOrderQueueSyncing } from "@/src/database/repositories/sync-queue-repository";
 import { getOrCreateDeviceId } from "@/src/lib/secure-storage";
 import { getMyCatalog, syncCatalog as syncCatalogRequest, syncOrders as syncOrdersRequest } from "@/src/services/sales-service";
 
@@ -119,11 +106,11 @@ async function withRetry<T>(operation: () => Promise<T>, attempts = MAX_RETRIES)
 
 function shouldSkip(options?: SyncOptions) {
     if (options?.isConnected === false) {
-        return "Sem conexao. Dados seguem salvos localmente.";
+        return "Sem conexão. Dados seguem salvos localmente.";
     }
 
     if (options?.canSync === false) {
-        return "Sincronizacao indisponivel para este contexto.";
+        return "Sincronização indisponível para este contexto.";
     }
 
     return null;
@@ -195,7 +182,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
             }
 
             return {
-                ...emptyScopeResult("Catalogo sem alteracoes pendentes.", 0, false),
+                ...emptyScopeResult("Catálogo sem alterações pendentes.", 0, false),
                 pendingBefore,
             };
         }
@@ -220,7 +207,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
             const result = response.results.find((item: { operationId?: string | null }) => item.operationId === queueItem.operationId) ?? response.results[index];
 
             if (!result) {
-                await markCatalogChangeFailed(queueItem.queueId, "Resposta ausente para operacao de catalogo.", buildNextRetryAt(queueItem.attempts));
+                await markCatalogChangeFailed(queueItem.queueId, "Resposta ausente para operação de catálogo.", buildNextRetryAt(queueItem.attempts));
                 continue;
             }
 
@@ -247,15 +234,13 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
             pendingAfter,
             synced,
             rejected,
-            message: rejected > 0 ? "Algumas alteracoes de catalogo foram rejeitadas." : "Catalogo sincronizado.",
+            message: rejected > 0 ? "Algumas alterações de catálogo foram rejeitadas." : "Catálogo sincronizado.",
         };
     } catch (err) {
-        const error = getErrorMessage(err, "Erro ao sincronizar catalogo.");
+        const error = getErrorMessage(err, "Erro ao sincronizar catálogo.");
         lastError = error;
 
-        await Promise.all(
-            queueItems.map((item) => markCatalogChangeFailed(item.queueId, error, buildNextRetryAt(item.attempts))),
-        );
+        await Promise.all(queueItems.map((item) => markCatalogChangeFailed(item.queueId, error, buildNextRetryAt(item.attempts))));
 
         const pendingAfter = await countPendingCatalogChanges();
 
@@ -305,7 +290,7 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
         let rejected = 0;
 
         for (const queuedOrder of queueItems) {
-            const result = response.results.find((item: { localOrderId: any; localId: any; }) => (item.localOrderId ?? item.localId) === queuedOrder.localOrderId);
+            const result = response.results.find((item: { localOrderId: any; localId: any }) => (item.localOrderId ?? item.localId) === queuedOrder.localOrderId);
             const localOrderId = result?.localOrderId ?? result?.localId ?? queuedOrder.localOrderId;
 
             if (!result || !localOrderId) {
@@ -350,9 +335,7 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
         const error = getErrorMessage(err, "Erro ao sincronizar pedidos.");
         lastError = error;
 
-        await Promise.all(
-            queueItems.map((item) => markOrderQueueFailed(item.queueId, error, buildNextRetryAt(item.attempts))),
-        );
+        await Promise.all(queueItems.map((item) => markOrderQueueFailed(item.queueId, error, buildNextRetryAt(item.attempts))));
 
         const pendingAfter = await countPendingOrderSyncQueue();
 
@@ -371,14 +354,14 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
 
 async function syncCatalog(options: SyncOptions = {}) {
     return runExclusive(
-        async () => emptyScopeResult("Sincronizacao ja em andamento.", await countPendingCatalogChanges()),
+        async () => emptyScopeResult("Sincronização já em andamento.", await countPendingCatalogChanges()),
         () => syncCatalogInternal(options),
     );
 }
 
 async function syncOrders(options: SyncOptions = {}) {
     return runExclusive(
-        async () => emptyScopeResult("Sincronizacao ja em andamento.", await countPendingOrderSyncQueue()),
+        async () => emptyScopeResult("Sincronização já em andamento.", await countPendingOrderSyncQueue()),
         () => syncOrdersInternal(options),
     );
 }
@@ -391,8 +374,8 @@ async function syncAll(options: SyncOptions = {}): Promise<SyncAllResult> {
             return {
                 ok: false,
                 skipped: true,
-                catalog: emptyScopeResult("Sincronizacao ja em andamento.", summary.pendingCatalogChanges),
-                orders: emptyScopeResult("Sincronizacao ja em andamento.", summary.pendingOrders),
+                catalog: emptyScopeResult("Sincronização já em andamento.", summary.pendingCatalogChanges),
+                orders: emptyScopeResult("Sincronização já em andamento.", summary.pendingOrders),
                 summary,
             };
         },

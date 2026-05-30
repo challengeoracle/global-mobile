@@ -1,4 +1,4 @@
-import { OrderItemRequest } from "@/src/types/sales";
+import { OrderItemRequest } from "../types/sales";
 
 export type OrderQrPayload = {
     type: "OFFPAY_ORDER";
@@ -26,6 +26,7 @@ export type OrderConfirmationQrPayload = {
     orderStatus: string;
     paymentStatus: string;
     syncStatus: string;
+    message?: string | null;
     items: OrderItemRequest[];
 };
 
@@ -59,6 +60,7 @@ type CompactOrderConfirmationQrPayload = {
     os: string;
     ps: string;
     ss: string;
+    msg?: string | null;
     items: {
         p: string;
         q: number;
@@ -99,6 +101,7 @@ export function buildOrderConfirmationQrPayload(params: OrderConfirmationQrPaylo
         os: params.orderStatus,
         ps: params.paymentStatus,
         ss: params.syncStatus,
+        msg: params.message ?? null,
         items: params.items.map((item) => ({
             p: item.productId,
             q: item.quantity,
@@ -164,6 +167,7 @@ export function decodeOrderConfirmationQr(value: string): OrderConfirmationQrPay
         orderStatus: payload.os,
         paymentStatus: payload.ps,
         syncStatus: payload.ss,
+        message: payload.msg ?? null,
         items: payload.items.map((item) => ({
             productId: item.p,
             quantity: item.q,

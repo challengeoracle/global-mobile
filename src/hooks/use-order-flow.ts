@@ -22,6 +22,14 @@ export type GeneratedOrderQr = {
     items: OrderItemRequest[];
 };
 
+export type OrderSyncFeedback = {
+    ok: boolean;
+    message: string;
+    pendingAfter: number;
+    synced?: number;
+    rejected?: number;
+};
+
 export function useOrderFlow(storeId?: string | null) {
     const { user } = useAuth();
     const network = useNetworkStatus();
@@ -50,7 +58,7 @@ export function useOrderFlow(storeId?: string | null) {
         setMessage("");
 
         if (!product.active) {
-            setMessage("Produto indisponivel.");
+            setMessage("Produto indisponível.");
             return;
         }
 
@@ -117,12 +125,12 @@ export function useOrderFlow(storeId?: string | null) {
         setMessage("");
 
         if (!storeId) {
-            setMessage("Catalogo sem loja vinculada.");
+            setMessage("Catálogo sem loja vinculada.");
             return null;
         }
 
         if (!user) {
-            setMessage("Usuario nao encontrado.");
+            setMessage("Usuário não encontrado.");
             return null;
         }
 
@@ -171,23 +179,38 @@ export function useOrderFlow(storeId?: string | null) {
         return generated;
     }
 
-    async function syncPendingOrders(silent = false) {
+    async function syncPendingOrders(silent = false): Promise<OrderSyncFeedback> {
         if (!network.isConnected) {
-            if (!silent) setMessage("Sem conexao. Pedidos seguem salvos.");
-            await refreshPendingOrderCount();
-            return false;
+            const feedback = {
+                ok: false,
+                message: "Sem conexão. Pedidos seguem salvos.",
+                pendingAfter: await refreshPendingOrderCount(),
+            };
+
+            if (!silent) setMessage(feedback.message);
+            return feedback;
         }
 
         if (!user) {
-            if (!silent) setMessage("Usuario nao encontrado.");
-            await refreshPendingOrderCount();
-            return false;
+            const feedback = {
+                ok: false,
+                message: "Usuário não encontrado.",
+                pendingAfter: await refreshPendingOrderCount(),
+            };
+
+            if (!silent) setMessage(feedback.message);
+            return feedback;
         }
 
         if (user.role !== "SELLER") {
-            if (!silent) setMessage("Somente o vendedor sincroniza pedidos confirmados.");
-            await refreshPendingOrderCount();
-            return false;
+            const feedback = {
+                ok: false,
+                message: "Somente o vendedor sincroniza pedidos confirmados.",
+                pendingAfter: await refreshPendingOrderCount(),
+            };
+
+            if (!silent) setMessage(feedback.message);
+            return feedback;
         }
 
         try {
@@ -198,21 +221,32 @@ export function useOrderFlow(storeId?: string | null) {
                 canSync: user.role === "SELLER",
             });
 
-            await refreshPendingOrderCount();
+            const pendingAfter = await refreshPendingOrderCount();
 
             if (!silent) {
                 setMessage(result.message);
             }
 
-            return result.ok;
+            return {
+                ok: result.ok,
+                message: result.message,
+                pendingAfter,
+                synced: result.synced,
+                rejected: result.rejected,
+            };
         } catch (err) {
-            await refreshPendingOrderCount();
+            const fallbackMessage = err instanceof Error ? err.message : "Erro ao sincronizar pedidos.";
+            const pendingAfter = await refreshPendingOrderCount();
 
             if (!silent) {
-                setMessage(err instanceof Error ? err.message : "Erro ao sincronizar pedidos.");
+                setMessage(fallbackMessage);
             }
 
-            return false;
+            return {
+                ok: false,
+                message: fallbackMessage,
+                pendingAfter,
+            };
         } finally {
             setSyncing(false);
         }

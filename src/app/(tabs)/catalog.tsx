@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
@@ -18,15 +19,16 @@ import { OrderConfirmationScannerModal } from "@/src/components/orders/order-con
 import { OrderQrModal } from "@/src/components/orders/order-qr-modal";
 import { OrderScannerModal } from "@/src/components/orders/order-scanner-modal";
 import { PageHeader } from "@/src/components/ui/page-header";
-
 import { clearCatalog } from "@/src/database/repositories/catalog-repository";
 import { buildOrderConfirmationPayloadFromLocal } from "@/src/database/repositories/order-repository";
+
 import { useCatalogScreen } from "@/src/hooks/use-catalog-screen";
 import { useOrderFlow } from "@/src/hooks/use-order-flow";
 import { buildCatalogQrPayload, encodeCatalogQr } from "@/src/utils/catalog-qr";
 import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
 
 export default function CatalogScreen() {
+    const router = useRouter();
     const catalog = useCatalogScreen();
     const orders = useOrderFlow(catalog.catalogStoreId);
 
@@ -47,6 +49,7 @@ export default function CatalogScreen() {
     const [sellerConfirmationQrVisible, setSellerConfirmationQrVisible] = useState(false);
     const [sellerConfirmationQrValue, setSellerConfirmationQrValue] = useState<string | null>(null);
     const [sellerConfirmationSynced, setSellerConfirmationSynced] = useState(false);
+    const [sellerConfirmationMessage, setSellerConfirmationMessage] = useState<string | null>(null);
 
     const qrData = useMemo(() => {
         if (!catalog.catalogStoreId || catalog.categories.length === 0) {
@@ -84,22 +87,10 @@ export default function CatalogScreen() {
         orders.clearGeneratedOrderQr();
     }
 
-    function handleOpenCustomerCatalog() {
-        setCustomerCatalogVisible(true);
-    }
-
-    function handleOpenCart() {
-        setCartVisible(true);
-    }
-
     async function handleGenerateOrderQr() {
         const generated = await orders.generateOrderQr();
 
         if (generated) {
-            // A MÁGICA ACONTECE AQUI:
-            // Nós NÃO fechamos o carrinho (`setCartVisible(false)` foi removido).
-            // O modal do QR Code simplesmente sobe por cima do carrinho de forma fluida.
-            // Isso evita 100% dos bugs de animação travada do React Native.
             setOrderQrVisible(true);
         }
     }
@@ -112,38 +103,21 @@ export default function CatalogScreen() {
         }, 500);
     }
 
-    // Fluxo final do CLIENTE - O cliente viu que o vendedor confirmou a venda
-    async function handleClientScannedSellerConfirmation() {
-        // AQUI SIM, com a venda salva, fechamos todas as janelas que estavam empilhadas
+    async function handleClientScannedSellerConfirmation(_localOrderId: string) {
         setOrderConfirmationScannerVisible(false);
         setOrderQrVisible(false);
         setCartVisible(false);
         setCustomerCatalogVisible(false);
 
-        // Limpamos tudo para a próxima compra
         orders.clearGeneratedOrderQr();
         orders.clearCart();
 
         await orders.refreshPendingOrderCount();
         await catalog.loadLocalCatalog();
+        router.push("/(tabs)/orders");
     }
 
-    // Fluxo do VENDEDOR - Escaneando o QR do Cliente para receber o pedido
-    async function handleOrderConfirmedBySeller(localOrderId: string) {
-        setOrderScannerVisible(false);
-
-        await orders.refreshPendingOrderCount();
-        await catalog.loadLocalCatalog();
-
-        let synced = false;
-
-        if (catalog.network.isConnected) {
-            synced = await orders.syncPendingOrders(false);
-
-            await orders.refreshPendingOrderCount();
-            await catalog.loadLocalCatalog();
-        }
-
+    async function openSellerConfirmationQr(localOrderId: string, synced: boolean) {
         const confirmation = await buildOrderConfirmationPayloadFromLocal(localOrderId);
 
         if (!confirmation.storeId) {
@@ -164,20 +138,42 @@ export default function CatalogScreen() {
             orderStatus: confirmation.orderStatus,
             paymentStatus: confirmation.paymentStatus,
             syncStatus: confirmation.syncStatus,
+            message: confirmation.message,
             items: confirmation.items,
         });
 
         setTimeout(() => {
             setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
             setSellerConfirmationSynced(synced);
+            setSellerConfirmationMessage(confirmation.message ?? null);
             setSellerConfirmationQrVisible(true);
         }, 500);
+    }
+
+    async function handleOrderConfirmedBySeller(localOrderId: string) {
+        setOrderScannerVisible(false);
+
+        await orders.refreshPendingOrderCount();
+        await catalog.loadLocalCatalog();
+
+        let synced = false;
+
+        if (catalog.network.isConnected) {
+            const syncResult = await orders.syncPendingOrders(false);
+            synced = syncResult.ok && (syncResult.rejected ?? 0) === 0;
+
+            await orders.refreshPendingOrderCount();
+            await catalog.loadLocalCatalog();
+        }
+
+        await openSellerConfirmationQr(localOrderId, synced);
     }
 
     function handleCloseSellerConfirmationQr() {
         setSellerConfirmationQrVisible(false);
         setSellerConfirmationQrValue(null);
         setSellerConfirmationSynced(false);
+        setSellerConfirmationMessage(null);
     }
 
     if (catalog.loading) {
@@ -201,7 +197,7 @@ export default function CatalogScreen() {
                         setOrderConfirmationScannerVisible(false);
                         setScannerVisible(true);
                     }}
-                    onOpenCatalog={handleOpenCustomerCatalog}
+                    onOpenCatalog={() => setCustomerCatalogVisible(true)}
                     onClearCatalog={handleClearCustomerCatalog}
                 />
 
@@ -220,7 +216,7 @@ export default function CatalogScreen() {
                     }}
                 />
 
-                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={handleOpenCart} />
+                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={() => setCartVisible(true)} />
 
                 <ProductDetailsModal
                     visible={catalog.detailsVisible}
@@ -242,7 +238,6 @@ export default function CatalogScreen() {
                     visible={orderQrVisible}
                     orderQr={orders.generatedOrderQr}
                     onClose={() => {
-                        // Se o cliente fechar o QR Code sem querer, ele volta pro carrinho com os itens.
                         setOrderQrVisible(false);
                         orders.clearGeneratedOrderQr();
                     }}
@@ -311,6 +306,7 @@ export default function CatalogScreen() {
                                 onPress={() => {
                                     setSellerConfirmationQrVisible(false);
                                     setSellerConfirmationQrValue(null);
+                                    setSellerConfirmationMessage(null);
                                     setOrderScannerVisible(true);
                                 }}
                                 className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4"
@@ -350,7 +346,7 @@ export default function CatalogScreen() {
 
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
 
-            <OrderConfirmationQrModal visible={sellerConfirmationQrVisible} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} onClose={handleCloseSellerConfirmationQr} />
+            <OrderConfirmationQrModal visible={sellerConfirmationQrVisible} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} message={sellerConfirmationMessage} onClose={handleCloseSellerConfirmationQr} />
 
             <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
 

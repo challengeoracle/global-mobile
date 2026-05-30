@@ -24,7 +24,7 @@ export function OrderQrModal({ visible, orderQr, onClose, onScanConfirmation }: 
     }
 
     return (
-        <BottomSheetModal visible={visible} eyebrow="Pedido" title="Mostrar QR ao vendedor" onClose={onClose} maxHeightClassName="max-h-[85%]">
+        <BottomSheetModal visible={visible} eyebrow="Pedido" title="Mostrar ao vendedor" onClose={onClose} maxHeightClassName="max-h-[85%]">
             <View className="items-center gap-4">
                 <View className="rounded-3xl border border-border bg-white p-5">
                     <QRCode value={orderQr.qrValue} size={230} />
@@ -35,14 +35,14 @@ export function OrderQrModal({ visible, orderQr, onClose, onScanConfirmation }: 
 
                     <Text className="mt-1 text-center text-2xl font-black text-card-foreground">{money(orderQr.totalAmount)}</Text>
 
-                    <Text className="mt-3 text-center text-sm leading-6 text-muted-foreground">O vendedor precisa escanear este QR para confirmar a venda. Depois, escaneie a confirmação do vendedor.</Text>
+                    <Text className="mt-3 text-center text-sm leading-6 text-muted-foreground">O vendedor precisa escanear este QR para salvar a venda no aparelho dele. Depois, escaneie o QR de confirmação.</Text>
 
                     <Pressable onPress={onScanConfirmation} className="mt-4 h-12 items-center justify-center rounded-2xl bg-primary">
                         <Text className="text-sm font-black uppercase tracking-[2px] text-white">Escanear confirmação</Text>
                     </Pressable>
 
                     <Pressable onPress={onClose} className="mt-3 h-12 items-center justify-center rounded-2xl border border-border bg-card">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">Fechar sem confirmar</Text>
+                        <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">Voltar ao carrinho</Text>
                     </Pressable>
                 </View>
             </View>
