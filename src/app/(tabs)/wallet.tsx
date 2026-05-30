@@ -17,6 +17,7 @@ export default function WalletScreen() {
     const { storeWallet, personalWallet, storeWalletTransactions, personalWalletTransactions, paymentTransactions, loading, refreshing, depositing, settling, error, loadWalletData, refreshWalletData, depositFake, settlePendingBalance } = useWallet();
 
     const isSeller = user?.role === "SELLER";
+    const canSettleStoreWallet = isSeller && (storeWallet?.pendingBalance ?? 0) > 0;
 
     useFocusEffect(
         useCallback(() => {
@@ -47,10 +48,12 @@ export default function WalletScreen() {
                     <View className="mt-6 gap-4">
                         <WalletBalanceCard wallet={storeWallet} isSeller title="Carteira da loja" description="Recebimentos da loja, incluindo saldo pendente das vendas." />
 
-                        <Pressable onPress={settlePendingBalance} disabled={settling} className="h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
-                            {settling ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="swap-vertical-outline" size={18} color="#ffffff" />}
-                            <Text className="text-sm font-black uppercase tracking-[1px] text-primary-foreground">Liberar saldo</Text>
-                        </Pressable>
+                        {canSettleStoreWallet ? (
+                            <Pressable onPress={settlePendingBalance} disabled={settling} className="h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
+                                {settling ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="swap-vertical-outline" size={18} color="#ffffff" />}
+                                <Text className="text-sm font-black uppercase tracking-[1px] text-primary-foreground">Liberar saldo</Text>
+                            </Pressable>
+                        ) : null}
 
                         <Text className="rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Mover saldo pendente para saldo disponível.</Text>
 
@@ -62,7 +65,7 @@ export default function WalletScreen() {
                     </View>
                 )}
 
-                <Pressable onPress={() => depositFake({ amount: 100, description: "Fake wallet deposit" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
+                <Pressable onPress={() => depositFake({ amount: 100, description: "Dep\u00f3sito fake na carteira" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
                     {depositing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="add-circle-outline" size={18} color="#ffffff" />}
                     <Text className="text-sm font-black uppercase tracking-[1px] text-primary-foreground">Adicionar R$ 100</Text>
                 </Pressable>

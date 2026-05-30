@@ -110,7 +110,20 @@ export function useWallet(): UseWalletState {
         try {
             setSettling(true);
             setError("");
-            await settleWallet();
+            const pendingAmount = storeWallet?.pendingBalance ?? 0;
+
+            if (!isSeller) {
+                throw new Error("Somente vendedores podem liberar saldo.");
+            }
+
+            if (pendingAmount <= 0) {
+                throw new Error("N\u00e3o h\u00e1 saldo pendente dispon\u00edvel para liberar.");
+            }
+
+            await settleWallet({
+                amount: pendingAmount,
+                description: "Liberar saldo pendente",
+            });
             await fetchAll();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Não foi possível liberar o saldo pendente.");
@@ -118,7 +131,7 @@ export function useWallet(): UseWalletState {
         } finally {
             setSettling(false);
         }
-    }, [fetchAll]);
+    }, [fetchAll, isSeller, storeWallet?.pendingBalance]);
 
     return {
         storeWallet,

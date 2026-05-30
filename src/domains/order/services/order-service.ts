@@ -15,6 +15,18 @@ export async function getMyOrders() {
     });
 }
 
+export async function getMySales() {
+    return salesRequest<OrderResponse[]>("/order/me/sales", {
+        auth: true,
+    });
+}
+
+export async function getMyPurchases() {
+    return salesRequest<OrderResponse[]>("/order/me/purchases", {
+        auth: true,
+    });
+}
+
 export async function getOrderById(orderId: string) {
     return salesRequest<OrderResponse>(`/order/${orderId}`, {
         auth: true,

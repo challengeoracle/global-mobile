@@ -6,64 +6,121 @@ const COLOR_GREEN = "#22c55e";
 const COLOR_PURPLE = "#7c3aed";
 
 type ConnectionStatus = {
-    isConnected: boolean;
+    isConnected: boolean | null;
+    isInternetReachable: boolean | null;
     type: NetInfoStateType | "unknown";
+    source: "initial" | "fetch" | "listener";
 };
 
 export function useNetworkStatus() {
     const [connection, setConnection] = useState<ConnectionStatus>({
-        isConnected: false,
+        isConnected: null,
+        isInternetReachable: null,
         type: "unknown",
+        source: "initial",
     });
 
     useEffect(() => {
-        const unsubscribe = NetInfo.addEventListener((state) => {
+        let mounted = true;
+
+        NetInfo.fetch().then((state) => {
+            if (!mounted) {
+                return;
+            }
+
             setConnection({
-                isConnected: Boolean(state.isConnected && state.isInternetReachable),
+                isConnected: state.isConnected,
+                isInternetReachable: state.isInternetReachable,
                 type: state.type,
+                source: "fetch",
             });
         });
 
-        return unsubscribe;
+        const unsubscribe = NetInfo.addEventListener((state) => {
+            setConnection({
+                isConnected: state.isConnected,
+                isInternetReachable: state.isInternetReachable,
+                type: state.type,
+                source: "listener",
+            });
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
     }, []);
 
     const networkInfo = useMemo(() => {
-        if (!connection.isConnected) {
+        const canAttemptRemote = connection.isConnected === true && connection.isInternetReachable !== false;
+        const explicitlyOffline = connection.isConnected === false || connection.isInternetReachable === false;
+
+        if (explicitlyOffline) {
             return {
                 isConnected: false,
-                label: "Sem conexão",
+                canAttemptRemote: false,
+                isInternetReachable: connection.isInternetReachable,
+                source: connection.source,
+                type: connection.type,
+                label: "Sem conexÃ£o",
                 icon: "cloud-offline-outline" as const,
                 color: COLOR_RED,
                 description: "Operando localmente.",
             };
         }
 
-        if (connection.type === "wifi") {
+        if (canAttemptRemote && connection.type === "wifi") {
             return {
                 isConnected: true,
+                canAttemptRemote: true,
+                isInternetReachable: connection.isInternetReachable,
+                source: connection.source,
+                type: connection.type,
                 label: "Wi-Fi",
                 icon: "wifi-outline" as const,
                 color: COLOR_GREEN,
-                description: "Sincronização disponível.",
+                description: "SincronizaÃ§Ã£o disponÃ­vel.",
             };
         }
 
-        if (connection.type === "cellular") {
+        if (canAttemptRemote && connection.type === "cellular") {
             return {
                 isConnected: true,
-                label: "Rede móvel",
+                canAttemptRemote: true,
+                isInternetReachable: connection.isInternetReachable,
+                source: connection.source,
+                type: connection.type,
+                label: "Rede mÃ³vel",
                 icon: "phone-portrait-outline" as const,
                 color: COLOR_PURPLE,
-                description: "Conexão limitada.",
+                description: "ConexÃ£o limitada.",
+            };
+        }
+
+        if (canAttemptRemote) {
+            return {
+                isConnected: true,
+                canAttemptRemote: true,
+                isInternetReachable: connection.isInternetReachable,
+                source: connection.source,
+                type: connection.type,
+                label: "Online",
+                icon: "radio-outline" as const,
+                color: COLOR_GREEN,
+                description: "Servidor disponÃ­vel.",
             };
         }
 
         return {
-            isConnected: true,
-            label: "Online",
-            icon: "radio-outline" as const,
+            isConnected: false,
+            canAttemptRemote: true,
+            isInternetReachable: connection.isInternetReachable,
+            source: connection.source,
+            type: connection.type,
+            label: "Verificando rede",
+            icon: "hourglass-outline" as const,
             color: COLOR_GREEN,
-            description: "Servidor disponível.",
+            description: "Aguardando confirmaÃ§Ã£o da conectividade.",
         };
     }, [connection]);
 

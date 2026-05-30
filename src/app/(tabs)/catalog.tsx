@@ -192,12 +192,14 @@ export default function CatalogScreen() {
 
         let synced = false;
 
-        if (catalog.network.isConnected) {
+        try {
             const syncResult = await orders.syncPendingOrders(false);
             synced = syncResult.ok && (syncResult.rejected ?? 0) === 0;
 
             await orders.refreshPendingOrderCount();
             await catalog.loadLocalCatalog();
+        } catch {
+            synced = false;
         }
 
         await openSellerConfirmationQr(localOrderId, synced);

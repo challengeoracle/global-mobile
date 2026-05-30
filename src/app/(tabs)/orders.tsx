@@ -6,9 +6,11 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
-import { getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderRow, saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
+import { getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderRow, saveRemoteOrders, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
+import { getMyOrders, getMyPurchases, getMySales, getOrdersByCustomer } from "@/src/domains/order/services/order-service";
+import { OrderResponse } from "@/src/domains/order/types/order";
 import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
-import { getMyOrders } from "@/src/domains/order/services/order-service";
+import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
@@ -33,6 +35,16 @@ function queueIssueMessage(syncStatus: string, queueStatus?: string, lastError?:
 
 function getPrimaryOrderDate(order: LocalOrderRow) {
     return order.offline_created_at ?? order.created_at;
+}
+
+function dedupeRemoteOrders(orders: OrderResponse[]) {
+    const ordersMap = new Map<string, OrderResponse>();
+
+    for (const order of orders) {
+        ordersMap.set(order.id, order);
+    }
+
+    return Array.from(ordersMap.values());
 }
 
 export default function OrdersScreen() {
@@ -68,40 +80,154 @@ export default function OrdersScreen() {
 
     async function loadLocalOrders() {
         const localOrders = await getLocalOrders();
+        console.log("[Orders] SQLite carregado", {
+            quantidade: localOrders.length,
+            ids: localOrders.map((order) => order.local_order_id),
+        });
         setOrders(localOrders);
         return localOrders;
     }
 
     async function refreshOrdersFromBackend(options?: { delayedRetry?: boolean; silent?: boolean }) {
-        if (!network.isConnected) {
+        if (!network.canAttemptRemote) {
+            console.log("[Orders] Sem conexão. Mantendo apenas pedidos locais.", {
+                isConnected: network.isConnected,
+                isInternetReachable: network.isInternetReachable,
+                source: network.source,
+                type: network.type,
+            });
             return;
         }
 
         try {
-            const remoteOrders = await getMyOrders();
+            console.log("[Orders] Iniciando refresh remoto", {
+                delayedRetry: Boolean(options?.delayedRetry),
+                usuario: user?.id,
+                role: user?.role,
+                isConnected: network.isConnected,
+                isInternetReachable: network.isInternetReachable,
+                source: network.source,
+                type: network.type,
+            });
+            const remoteOrders = await loadRemoteOrders();
+            console.log("[Orders] Pedidos recebidos da API", {
+                quantidade: remoteOrders.length,
+                ids: remoteOrders.map((order) => order.id),
+            });
             await saveRemoteOrders(remoteOrders);
+            console.log("[Orders] Pedidos remotos salvos no SQLite");
             await loadLocalOrders();
 
             if (options?.delayedRetry) {
+                console.log("[Orders] Aguardando novo refresh para reconciliar pagamento");
                 await wait(1800);
-                const refreshedOrders = await getMyOrders();
+                const refreshedOrders = await loadRemoteOrders();
+                console.log("[Orders] Segundo refresh remoto concluído", {
+                    quantidade: refreshedOrders.length,
+                    ids: refreshedOrders.map((order) => order.id),
+                });
                 await saveRemoteOrders(refreshedOrders);
+                const refreshedLocalOrders = await loadLocalOrders();
+                await reconcilePendingPayments(refreshedLocalOrders);
                 await loadLocalOrders();
             }
         } catch (err) {
+            console.log("[Orders] Erro ao atualizar pedidos", err);
             if (!options?.silent) {
                 setMessage(err instanceof Error ? err.message : "Não foi possível atualizar os pedidos agora.");
             }
         }
     }
 
+    async function reconcilePendingPayments(sourceOrders?: LocalOrderRow[]) {
+        const ordersToCheck = (sourceOrders ?? orders).filter((order) => {
+            return Boolean(order.remote_order_id) && (order.payment_status === "PENDING" || order.payment_status === "PENDING_PAYMENT");
+        });
+
+        await Promise.all(
+            ordersToCheck.map(async (order) => {
+                if (!order.remote_order_id) {
+                    return;
+                }
+
+                try {
+                    console.log("[Orders] Consultando transação de pagamento", {
+                        localOrderId: order.local_order_id,
+                        remoteOrderId: order.remote_order_id,
+                        paymentStatusAtual: order.payment_status,
+                    });
+                    const transaction = await getPaymentTransactionByOrderId(order.remote_order_id);
+                    const nextStatus = transaction.status === "APPROVED" ? "PAID" : transaction.status === "REJECTED" ? "REJECTED" : null;
+
+                    console.log("[Orders] Retorno da transação de pagamento", {
+                        remoteOrderId: order.remote_order_id,
+                        statusTransacao: transaction.status,
+                        paymentStatusAplicado: nextStatus,
+                    });
+
+                    if (!nextStatus) {
+                        return;
+                    }
+
+                    await updateLocalOrderPaymentStatusByRemoteId({
+                        remoteOrderId: order.remote_order_id,
+                        paymentStatus: nextStatus,
+                    });
+                } catch {
+                    // If payment data is not ready yet, we keep the persisted order state.
+                }
+            }),
+        );
+    }
+
+    async function loadRemoteOrders() {
+        if (!user) {
+            console.log("[Orders] Usuário ausente. Não foi possível buscar pedidos remotos.");
+            return [];
+        }
+
+        if (user.role === "SELLER") {
+            const [sales, purchases] = await Promise.all([getMySales(), getMyPurchases()]);
+            console.log("[Orders] SELLER buscou vendas e compras", {
+                vendas: sales.length,
+                compras: purchases.length,
+            });
+            return dedupeRemoteOrders([...sales, ...purchases]);
+        }
+
+        const purchases = await getMyPurchases();
+        console.log("[Orders] CUSTOMER buscou /order/me/purchases", {
+            quantidade: purchases.length,
+        });
+
+        if (purchases.length > 0) {
+            return purchases;
+        }
+
+        const remoteOrders = await getMyOrders();
+        console.log("[Orders] CUSTOMER fallback /order/me", {
+            quantidade: remoteOrders.length,
+        });
+
+        if (remoteOrders.length > 0) {
+            return remoteOrders;
+        }
+
+        console.log("[Orders] CUSTOMER fallback final /order/customer/{id}", {
+            customerId: user.id,
+        });
+        return getOrdersByCustomer(user.id);
+    }
+
     async function loadOrders() {
         try {
             setLoading(true);
             setMessage("");
+            console.log("[Orders] Carregando tela de pedidos");
             await loadLocalOrders();
             await refreshOrdersFromBackend({ silent: false });
         } catch (err) {
+            console.log("[Orders] Erro no carregamento inicial", err);
             setMessage(err instanceof Error ? err.message : "Erro ao carregar pedidos.");
         } finally {
             setLoading(false);
@@ -109,7 +235,9 @@ export default function OrdersScreen() {
     }
 
     async function handleSync() {
+        console.log("[Orders] Sincronização manual iniciada");
         const result = await ordersFlow.syncPendingOrders(false);
+        console.log("[Orders] Resultado da sincronização manual", result);
         setMessage(result.message);
         await loadLocalOrders();
         await refreshOrdersFromBackend({ delayedRetry: true, silent: false });
@@ -160,7 +288,7 @@ export default function OrdersScreen() {
                             </View>
 
                             {isSeller ? (
-                                <Pressable onPress={handleSync} disabled={!network.isConnected || totals.pending === 0 || ordersFlow.syncing} className="h-12 flex-row items-center gap-2 rounded-2xl bg-primary px-4 disabled:opacity-50">
+                                <Pressable onPress={handleSync} disabled={!network.canAttemptRemote || totals.pending === 0 || ordersFlow.syncing} className="h-12 flex-row items-center gap-2 rounded-2xl bg-primary px-4 disabled:opacity-50">
                                     {ordersFlow.syncing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />}
                                     <Text className="text-xs font-black uppercase tracking-[1px] text-white">Sincronizar</Text>
                                 </Pressable>

@@ -43,6 +43,7 @@ export type OrderResponse = {
     syncStatus: string;
     totalAmount: number;
     createdAt: string;
+    updatedAt?: string | null;
     offlineCreatedAt?: string | null;
     items: OrderItemResponse[];
 };

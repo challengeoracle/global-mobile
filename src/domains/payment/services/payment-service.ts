@@ -1,4 +1,4 @@
-import { DepositRequest, PaymentTransactionResponse, WalletResponse, WalletSettleResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
+import { DepositRequest, PaymentTransactionResponse, SettleWalletRequest, WalletResponse, WalletSettleResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
 import { paymentRequest } from "@/src/shared/lib/api";
 
 export function getMyWallet() {
@@ -33,9 +33,10 @@ export function getMyPersonalWalletTransactions() {
     });
 }
 
-export function settleWallet() {
+export function settleWallet(body: SettleWalletRequest) {
     return paymentRequest<WalletSettleResponse>("/wallet/settle", {
         method: "POST",
+        body,
         auth: true,
     });
 }

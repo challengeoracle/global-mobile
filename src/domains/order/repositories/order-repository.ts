@@ -19,6 +19,7 @@ export type LocalOrderRow = {
     sync_status: string;
     total_amount: number;
     created_at: string;
+    updated_at: string | null;
     offline_created_at: string | null;
     synced_at: string | null;
 };
@@ -92,6 +93,7 @@ export async function getLocalOrderByLocalId(localOrderId: string) {
             sync_status,
             total_amount,
             created_at,
+            updated_at,
             offline_created_at,
             synced_at
         FROM orders
@@ -118,6 +120,7 @@ export async function getLocalOrderByRemoteId(remoteOrderId: string) {
             sync_status,
             total_amount,
             created_at,
+            updated_at,
             offline_created_at,
             synced_at
         FROM orders
@@ -144,6 +147,7 @@ export async function getLocalOrderById(orderId: string) {
             sync_status,
             total_amount,
             created_at,
+            updated_at,
             offline_created_at,
             synced_at
         FROM orders
@@ -199,6 +203,7 @@ export async function createLocalOfflineOrder(params: {
     syncStatus?: string | null;
     orderStatus?: string | null;
     paymentStatus?: string | null;
+    enqueueSync?: boolean;
 }) {
     if (!params.items.length) {
         throw new Error("Pedido precisa ter pelo menos um item.");
@@ -238,11 +243,12 @@ export async function createLocalOfflineOrder(params: {
                 sync_status,
                 total_amount,
                 created_at,
+                updated_at,
                 offline_created_at,
                 synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null],
         );
 
         for (const item of params.items) {
@@ -288,7 +294,7 @@ export async function createLocalOfflineOrder(params: {
         );
     });
 
-    if ((params.syncStatus ?? "PENDING") === "PENDING") {
+    if (params.enqueueSync !== false && (params.syncStatus ?? "PENDING") === "PENDING") {
         await enqueueOrderSync(localOrderId, {
             localOrderId,
             customerId: params.customerId ?? undefined,
@@ -345,10 +351,11 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
                 order_status = ?,
                 payment_status = ?,
                 sync_status = ?,
+                updated_at = ?,
                 synced_at = ?
             WHERE local_order_id = ?
             `,
-            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.syncStatus, params.payload.confirmedAt, params.payload.localOrderId],
+            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.syncStatus, params.payload.confirmedAt, params.payload.confirmedAt, params.payload.localOrderId],
         );
 
         return {
@@ -408,10 +415,11 @@ export async function getLocalOrders() {
             sync_status,
             total_amount,
             created_at,
+            updated_at,
             offline_created_at,
             synced_at
         FROM orders
-        ORDER BY created_at DESC
+        ORDER BY COALESCE(updated_at, created_at) DESC
     `);
 }
 
@@ -430,11 +438,12 @@ export async function getPendingLocalOrders() {
             sync_status,
             total_amount,
             created_at,
+            updated_at,
             offline_created_at,
             synced_at
         FROM orders
         WHERE sync_status = 'PENDING'
-        ORDER BY created_at ASC
+        ORDER BY COALESCE(updated_at, created_at) ASC
     `);
 }
 
@@ -519,10 +528,11 @@ export async function markOrderSynced(params: { localOrderId: string; remoteOrde
             payment_status = COALESCE(?, payment_status),
             order_status = COALESCE(?, order_status),
             sync_status = ?,
+            updated_at = ?,
             synced_at = ?
         WHERE local_order_id = ?
         `,
-        [params.remoteOrderId ?? null, params.paymentStatus ?? null, params.orderStatus ?? null, params.syncStatus ?? "SYNCED", now(), params.localOrderId],
+        [params.remoteOrderId ?? null, params.paymentStatus ?? null, params.orderStatus ?? null, params.syncStatus ?? "SYNCED", now(), now(), params.localOrderId],
     );
 }
 
@@ -531,10 +541,11 @@ export async function markOrderRejected(params: { localOrderId: string; message?
         `
         UPDATE orders
         SET sync_status = ?,
+            updated_at = ?,
             synced_at = ?
         WHERE local_order_id = ?
         `,
-        ["REJECTED", now(), params.localOrderId],
+        ["REJECTED", now(), now(), params.localOrderId],
     );
 }
 
@@ -545,6 +556,7 @@ export async function saveRemoteOrder(order: OrderResponse) {
         const existingOrder = existingByLocalOrderId ?? existingByRemoteOrderId;
         const targetOrderId = existingOrder?.id ?? order.id;
         const targetLocalOrderId = order.localOrderId ?? existingOrder?.local_order_id ?? order.id;
+        const persistedUpdatedAt = order.updatedAt ?? order.createdAt ?? now();
 
         await db.runAsync(
             `
@@ -561,12 +573,17 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 sync_status,
                 total_amount,
                 created_at,
+                updated_at,
                 offline_created_at,
                 synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, order.offlineCreatedAt ?? null, now()],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, now()],
         );
+
+        if (!order.items?.length) {
+            return;
+        }
 
         await db.runAsync(`DELETE FROM order_items WHERE order_id = ?`, [targetOrderId]);
 
@@ -593,6 +610,18 @@ export async function saveRemoteOrders(orders: OrderResponse[]) {
     for (const order of orders) {
         await saveRemoteOrder(order);
     }
+}
+
+export async function updateLocalOrderPaymentStatusByRemoteId(params: { remoteOrderId: string; paymentStatus: string }) {
+    await db.runAsync(
+        `
+        UPDATE orders
+        SET payment_status = ?,
+            updated_at = ?
+        WHERE remote_order_id = ?
+        `,
+        [params.paymentStatus, now(), params.remoteOrderId],
+    );
 }
 
 export async function countPendingLocalOrders() {

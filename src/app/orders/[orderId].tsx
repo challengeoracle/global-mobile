@@ -5,7 +5,7 @@ import { ReactNode, useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
-import { getLocalOrderByAnyId, getLocalOrderItems, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow, saveRemoteOrder } from "@/src/domains/order/repositories/order-repository";
+import { getLocalOrderByAnyId, getLocalOrderItems, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow, saveRemoteOrder, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
 import { getOrderById } from "@/src/domains/order/services/order-service";
 import { PaymentTransactionModal } from "@/src/domains/payment/components/payment-transaction-modal";
 import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
@@ -50,9 +50,15 @@ export default function OrderDetailsScreen() {
     const totalItems = items.reduce((total, item) => total + item.quantity, 0);
 
     async function hydrateLocalState(targetId: string) {
+        console.log("[OrderDetails] Buscando pedido no SQLite", {
+            targetId,
+        });
         const localOrder = await getLocalOrderByAnyId(targetId);
 
         if (!localOrder) {
+            console.log("[OrderDetails] Pedido não encontrado no SQLite", {
+                targetId,
+            });
             setOrder(null);
             setItems([]);
             setQueueMessage("");
@@ -64,6 +70,13 @@ export default function OrderDetailsScreen() {
         setOrder(localOrder);
         setItems(localItems);
         setQueueMessage(syncIssue?.lastError ?? "");
+        console.log("[OrderDetails] Pedido hidratado do SQLite", {
+            localOrderId: localOrder.local_order_id,
+            remoteOrderId: localOrder.remote_order_id,
+            itens: localItems.length,
+            paymentStatus: localOrder.payment_status,
+            syncStatus: localOrder.sync_status,
+        });
 
         return localOrder;
     }
@@ -78,18 +91,55 @@ export default function OrderDetailsScreen() {
         try {
             setLoading(true);
             setMessage("");
+            console.log("[OrderDetails] Carregando detalhes do pedido", {
+                orderId,
+                online: network.isConnected,
+            });
 
             const localOrder = await hydrateLocalState(orderId);
 
             if (!network.isConnected || !localOrder?.remote_order_id) {
+                console.log("[OrderDetails] Mantendo dados locais no detalhe", {
+                    online: network.isConnected,
+                    remoteOrderId: localOrder?.remote_order_id ?? null,
+                });
                 return;
             }
 
             try {
+                console.log("[OrderDetails] Buscando pedido remoto", {
+                    remoteOrderId: localOrder.remote_order_id,
+                });
                 const remoteOrder = await getOrderById(localOrder.remote_order_id);
                 await saveRemoteOrder(remoteOrder);
-                await hydrateLocalState(remoteOrder.id);
+                const refreshedLocalOrder = await hydrateLocalState(remoteOrder.id);
+
+                if (refreshedLocalOrder?.remote_order_id && (refreshedLocalOrder.payment_status === "PENDING" || refreshedLocalOrder.payment_status === "PENDING_PAYMENT")) {
+                    try {
+                        console.log("[OrderDetails] Consultando pagamento remoto", {
+                            remoteOrderId: refreshedLocalOrder.remote_order_id,
+                        });
+                        const payment = await getPaymentTransactionByOrderId(refreshedLocalOrder.remote_order_id);
+                        const nextStatus = payment.status === "APPROVED" ? "PAID" : payment.status === "REJECTED" ? "REJECTED" : null;
+                        console.log("[OrderDetails] Retorno do pagamento remoto", {
+                            statusTransacao: payment.status,
+                            paymentStatusAplicado: nextStatus,
+                        });
+
+                        if (nextStatus) {
+                            await updateLocalOrderPaymentStatusByRemoteId({
+                                remoteOrderId: refreshedLocalOrder.remote_order_id,
+                                paymentStatus: nextStatus,
+                            });
+                            await hydrateLocalState(remoteOrder.id);
+                        }
+                    } catch {
+                        console.log("[OrderDetails] Pagamento remoto ainda não disponível");
+                        // If the payment transaction is not ready yet, we keep the last persisted snapshot.
+                    }
+                }
             } catch (err) {
+                console.log("[OrderDetails] Erro ao atualizar pedido com backend", err);
                 setMessage(err instanceof Error ? err.message : "Não foi possível atualizar este pedido com o backend.");
             }
         } finally {

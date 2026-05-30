@@ -2,6 +2,7 @@ import { randomUUID } from "expo-crypto";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { createLocalOfflineOrder } from "@/src/domains/order/repositories/order-repository";
 import { countPendingOrderSyncQueue } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
@@ -179,6 +180,29 @@ export function useOrderFlow(storeId?: string | null) {
             items,
         };
 
+        await createLocalOfflineOrder({
+            localOrderId,
+            storeId,
+            customerId: user.id,
+            sellerId: null,
+            deviceId,
+            items,
+            confirmedBySeller: false,
+            offlineCreatedAt: createdAt,
+            shouldDecreaseStock: false,
+            syncStatus: "PENDING",
+            orderStatus: "CREATED",
+            paymentStatus: "PENDING_PAYMENT",
+            enqueueSync: false,
+        });
+        console.log("[OrderFlow] Pedido salvo localmente ao gerar QR", {
+            localOrderId,
+            storeId,
+            customerId: user.id,
+            itens: items.length,
+            totalAmount: qrTotalAmount,
+        });
+
         setGeneratedOrderQr(generated);
         setMessage("Mostre o QR Code para o vendedor confirmar a venda.");
 
@@ -186,7 +210,7 @@ export function useOrderFlow(storeId?: string | null) {
     }
 
     async function syncPendingOrders(silent = false): Promise<OrderSyncFeedback> {
-        if (!network.isConnected) {
+        if (!network.canAttemptRemote) {
             const feedback = {
                 ok: false,
                 message: "Sem conexão. Pedidos seguem salvos.",
@@ -221,11 +245,20 @@ export function useOrderFlow(storeId?: string | null) {
 
         try {
             setSyncing(true);
+            console.log("[OrderFlow] Iniciando sync de pedidos pendentes", {
+                role: user.role,
+                online: network.canAttemptRemote,
+                isConnected: network.isConnected,
+                isInternetReachable: network.isInternetReachable,
+                source: network.source,
+                type: network.type,
+            });
 
             const result = await syncOrders({
-                isConnected: network.isConnected,
+                isConnected: network.canAttemptRemote,
                 canSync: user.role === "SELLER",
             });
+            console.log("[OrderFlow] Resultado bruto da sync", result);
 
             const pendingAfter = await refreshPendingOrderCount();
 
@@ -263,18 +296,18 @@ export function useOrderFlow(storeId?: string | null) {
     }, []);
 
     useEffect(() => {
-        if (!network.isConnected) return;
+        if (!network.canAttemptRemote) return;
         if (user?.role !== "SELLER") return;
 
         scheduleSync({
             scopes: ["orders"],
-            isConnected: network.isConnected,
+            isConnected: network.canAttemptRemote,
             canSync: user.role === "SELLER",
             onComplete: async () => {
                 await refreshPendingOrderCount();
             },
         });
-    }, [network.isConnected, user?.role]);
+    }, [network.canAttemptRemote, user?.role]);
 
     return {
         cartItems,

@@ -70,6 +70,11 @@ async function getTableColumns(tableName: "catalog_sync_queue" | "order_sync_que
     return rows.map((row) => row.name);
 }
 
+async function getAnyTableColumns(tableName: string) {
+    const rows = await db.getAllAsync<TableInfoRow>(`PRAGMA table_info(${tableName})`);
+    return rows.map((row) => row.name);
+}
+
 async function createStandardSyncQueueTable(tableName: "catalog_sync_queue" | "order_sync_queue") {
     await db.execAsync(`
         CREATE TABLE IF NOT EXISTS ${tableName} (
@@ -347,6 +352,23 @@ async function ensureOrderSyncQueueSchema() {
     await backfillPendingOrdersIntoQueue();
 }
 
+async function ensureOrdersTableSchema() {
+    const columns = await getAnyTableColumns("orders");
+
+    if (!columns.includes("updated_at")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN updated_at TEXT;
+        `);
+
+        await db.execAsync(`
+            UPDATE orders
+            SET updated_at = COALESCE(updated_at, synced_at, offline_created_at, created_at)
+            WHERE updated_at IS NULL;
+        `);
+    }
+}
+
 export async function runMigrations() {
     await db.execAsync(`
         CREATE TABLE IF NOT EXISTS categories (
@@ -384,6 +406,7 @@ export async function runMigrations() {
             sync_status TEXT NOT NULL,
             total_amount REAL NOT NULL,
             created_at TEXT NOT NULL,
+            updated_at TEXT,
             offline_created_at TEXT,
             synced_at TEXT
         );
@@ -400,6 +423,7 @@ export async function runMigrations() {
         );
     `);
 
+    await ensureOrdersTableSchema();
     await ensureCatalogSyncQueueSchema();
     await ensureOrderSyncQueueSchema();
 }

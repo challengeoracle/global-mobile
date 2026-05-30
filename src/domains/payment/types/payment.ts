@@ -44,7 +44,9 @@ export type DepositRequest = {
     description?: string;
 };
 
-export type WalletSettleResponse = {
-    message?: string;
-    wallet?: WalletResponse;
+export type SettleWalletRequest = {
+    amount: number;
+    description?: string;
 };
+
+export type WalletSettleResponse = WalletResponse;
