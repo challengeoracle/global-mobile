@@ -23,7 +23,7 @@ function SyncAutoBootstrap() {
         }
 
         const isSeller = user?.role === "SELLER";
-        const isConnected = network.isConnected;
+        const isConnected = network.canAttemptRemote;
         const wasConnected = previousConnectedRef.current;
         const internetRestored = wasConnected === false && isConnected;
 
@@ -45,7 +45,7 @@ function SyncAutoBootstrap() {
             });
             hasTriggeredInitialSync.current = true;
         }
-    }, [loading, network.isConnected, user?.role]);
+    }, [loading, network.canAttemptRemote, user?.role]);
 
     return null;
 }

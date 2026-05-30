@@ -3,6 +3,7 @@ import { randomUUID } from "expo-crypto";
 import { CatalogSyncItem } from "@/src/domains/catalog/types/catalog";
 import { OrderSyncRequest } from "@/src/domains/order/types/order";
 import { db, waitForDatabaseReady } from "@/src/shared/database/database";
+import { getLocalSessionContext } from "@/src/shared/lib/local-session-context";
 
 type SyncQueueStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "REJECTED";
 
@@ -19,6 +20,9 @@ type SyncQueueRow = {
     updated_at: string;
     synced_at: string | null;
     next_retry_at: string | null;
+    owner_user_id: string | null;
+    owner_store_id: string | null;
+    owner_role: string | null;
 };
 
 type CountRow = {
@@ -137,10 +141,17 @@ function getReadyQueueQuery(tableName: "catalog_sync_queue" | "order_sync_queue"
             created_at,
             updated_at,
             synced_at,
-            next_retry_at
+            next_retry_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM ${tableName}
         WHERE status IN ('PENDING', 'SYNCING')
            OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+          AND (
+            owner_user_id = ?
+            OR (? IS NOT NULL AND owner_store_id = ?)
+          )
         ORDER BY created_at ASC
     `;
 }
@@ -150,6 +161,10 @@ function getPendingCountQuery(tableName: "catalog_sync_queue" | "order_sync_queu
         SELECT COUNT(*) AS total
         FROM ${tableName}
         WHERE status IN ('PENDING', 'FAILED', 'SYNCING')
+          AND (
+            owner_user_id = ?
+            OR (? IS NOT NULL AND owner_store_id = ?)
+          )
     `;
 }
 
@@ -158,6 +173,10 @@ function getRejectedCountQuery(tableName: "catalog_sync_queue" | "order_sync_que
         SELECT COUNT(*) AS total
         FROM ${tableName}
         WHERE status = 'REJECTED'
+          AND (
+            owner_user_id = ?
+            OR (? IS NOT NULL AND owner_store_id = ?)
+          )
     `;
 }
 
@@ -167,6 +186,10 @@ function getLatestErrorQuery(tableName: "catalog_sync_queue" | "order_sync_queue
         FROM ${tableName}
         WHERE status IN ('FAILED', 'REJECTED')
           AND last_error IS NOT NULL
+          AND (
+            owner_user_id = ?
+            OR (? IS NOT NULL AND owner_store_id = ?)
+          )
         ORDER BY updated_at DESC
         LIMIT 1
     `;
@@ -241,6 +264,7 @@ export async function enqueueCatalogChange(change: CatalogSyncItem) {
     const id = randomUUID();
     const operationId = change.operationId ?? randomUUID();
     const timestamp = now();
+    const context = await getLocalSessionContext();
 
     await db.runAsync(
         `
@@ -256,22 +280,37 @@ export async function enqueueCatalogChange(change: CatalogSyncItem) {
                 created_at,
                 updated_at,
                 synced_at,
-                next_retry_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                next_retry_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [id, operationId, getCatalogEntityType(change.operation), change.operation, buildCatalogPayload(change), "PENDING", 0, null, timestamp, timestamp, null, null],
+        [id, operationId, getCatalogEntityType(change.operation), change.operation, buildCatalogPayload(change), "PENDING", 0, null, timestamp, timestamp, null, null, context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 
     return operationId;
 }
 
 export async function getPendingCatalogChanges() {
-    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("catalog_sync_queue"), [now()]);
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
+    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("catalog_sync_queue"), [now(), context.userId, context.storeId, context.storeId]);
     return rows.map(parseCatalogRow);
 }
 
 export async function countPendingCatalogChanges() {
-    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("catalog_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return 0;
+    }
+
+    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("catalog_sync_queue"), [context.userId, context.storeId, context.storeId]);
     return row?.total ?? 0;
 }
 
@@ -280,7 +319,13 @@ export async function countRejectedCatalogChanges() {
         return 0;
     }
 
-    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("catalog_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return 0;
+    }
+
+    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("catalog_sync_queue"), [context.userId, context.storeId, context.storeId]);
     return row?.total ?? 0;
 }
 
@@ -289,7 +334,13 @@ export async function getLatestCatalogQueueError() {
         return null;
     }
 
-    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("catalog_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
+    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("catalog_sync_queue"), [context.userId, context.storeId, context.storeId]);
 }
 
 export async function markCatalogChangesSyncing(queueIds: string[]) {
@@ -325,6 +376,7 @@ export async function markCatalogChangeFailed(queueId: string, message: string, 
 export async function enqueueOrderSync(localOrderId: string, payload: OrderSyncRequest["orders"][number]) {
     const id = randomUUID();
     const timestamp = now();
+    const context = await getLocalSessionContext();
 
     await db.runAsync(
         `
@@ -340,22 +392,37 @@ export async function enqueueOrderSync(localOrderId: string, payload: OrderSyncR
                 created_at,
                 updated_at,
                 synced_at,
-                next_retry_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                next_retry_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [id, localOrderId, "ORDER", "CREATE", JSON.stringify(payload), "PENDING", 0, null, timestamp, timestamp, null, null],
+        [id, localOrderId, "ORDER", "CREATE", JSON.stringify(payload), "PENDING", 0, null, timestamp, timestamp, null, null, context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 
     return localOrderId;
 }
 
 export async function getPendingOrderSyncQueue() {
-    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("order_sync_queue"), [now()]);
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
+    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("order_sync_queue"), [now(), context.userId, context.storeId, context.storeId]);
     return rows.map(parseOrderRow);
 }
 
 export async function countPendingOrderSyncQueue() {
-    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("order_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return 0;
+    }
+
+    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
     return row?.total ?? 0;
 }
 
@@ -364,7 +431,13 @@ export async function countRejectedOrderSyncQueue() {
         return 0;
     }
 
-    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("order_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return 0;
+    }
+
+    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
     return row?.total ?? 0;
 }
 
@@ -373,7 +446,13 @@ export async function getLatestOrderQueueError() {
         return null;
     }
 
-    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("order_sync_queue"));
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
+    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
 }
 
 export async function markOrderQueueSyncing(queueIds: string[]) {

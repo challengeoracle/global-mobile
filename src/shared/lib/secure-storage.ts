@@ -4,6 +4,13 @@ const KEYS = {
     token: "signal.jwt",
     user: "signal.user",
     deviceId: "signal.device_id",
+    sessionContext: "signal.session_context",
+};
+
+export type StoredSessionContext = {
+    userId: string;
+    role: string;
+    storeId: string | null;
 };
 
 export async function saveToken(token: string) {
@@ -23,6 +30,15 @@ export async function getStoredUser<T>() {
     return raw ? (JSON.parse(raw) as T) : null;
 }
 
+export async function saveSessionContext(context: StoredSessionContext) {
+    await SecureStore.setItemAsync(KEYS.sessionContext, JSON.stringify(context));
+}
+
+export async function getStoredSessionContext() {
+    const raw = await SecureStore.getItemAsync(KEYS.sessionContext);
+    return raw ? (JSON.parse(raw) as StoredSessionContext) : null;
+}
+
 export async function getOrCreateDeviceId() {
     const stored = await SecureStore.getItemAsync(KEYS.deviceId);
 
@@ -38,7 +54,7 @@ export async function getOrCreateDeviceId() {
 }
 
 export async function clearSession() {
-    await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user)]);
+    await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user), SecureStore.deleteItemAsync(KEYS.sessionContext)]);
 }
 
 export async function regenerateDeviceId() {

@@ -4,7 +4,7 @@ import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from "reac
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 
 export default function AccessScreen() {
-    const { loading, isAuthenticated } = useAuth();
+    const { loading, loadingMessage, isAuthenticated } = useAuth();
 
     // Animação para a linha (efeito ondulação/respiração)
     const lineAnim = useRef(new Animated.Value(0.5)).current;
@@ -17,6 +17,7 @@ export default function AccessScreen() {
         return (
             <View className="flex-1 items-center justify-center bg-background">
                 <ActivityIndicator color="rgb(var(--primary))" size="large" />
+                <Text className="mt-4 text-sm font-medium text-muted-foreground">{loadingMessage}</Text>
             </View>
         );
 

@@ -367,6 +367,99 @@ async function ensureOrdersTableSchema() {
             WHERE updated_at IS NULL;
         `);
     }
+
+    if (!columns.includes("owner_user_id")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN owner_user_id TEXT;
+        `);
+    }
+
+    if (!columns.includes("owner_store_id")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN owner_store_id TEXT;
+        `);
+    }
+
+    if (!columns.includes("owner_role")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN owner_role TEXT;
+        `);
+    }
+}
+
+async function ensureCatalogTablesSchema() {
+    const categoryColumns = await getAnyTableColumns("categories");
+    const productColumns = await getAnyTableColumns("products");
+
+    if (!categoryColumns.includes("owner_user_id")) {
+        await db.execAsync(`
+            ALTER TABLE categories
+            ADD COLUMN owner_user_id TEXT;
+        `);
+    }
+
+    if (!categoryColumns.includes("owner_store_id")) {
+        await db.execAsync(`
+            ALTER TABLE categories
+            ADD COLUMN owner_store_id TEXT;
+        `);
+    }
+
+    if (!categoryColumns.includes("owner_role")) {
+        await db.execAsync(`
+            ALTER TABLE categories
+            ADD COLUMN owner_role TEXT;
+        `);
+    }
+
+    if (!productColumns.includes("owner_user_id")) {
+        await db.execAsync(`
+            ALTER TABLE products
+            ADD COLUMN owner_user_id TEXT;
+        `);
+    }
+
+    if (!productColumns.includes("owner_store_id")) {
+        await db.execAsync(`
+            ALTER TABLE products
+            ADD COLUMN owner_store_id TEXT;
+        `);
+    }
+
+    if (!productColumns.includes("owner_role")) {
+        await db.execAsync(`
+            ALTER TABLE products
+            ADD COLUMN owner_role TEXT;
+        `);
+    }
+}
+
+async function ensureSyncQueueOwnerSchema(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    const columns = await getAnyTableColumns(tableName);
+
+    if (!columns.includes("owner_user_id")) {
+        await db.execAsync(`
+            ALTER TABLE ${tableName}
+            ADD COLUMN owner_user_id TEXT;
+        `);
+    }
+
+    if (!columns.includes("owner_store_id")) {
+        await db.execAsync(`
+            ALTER TABLE ${tableName}
+            ADD COLUMN owner_store_id TEXT;
+        `);
+    }
+
+    if (!columns.includes("owner_role")) {
+        await db.execAsync(`
+            ALTER TABLE ${tableName}
+            ADD COLUMN owner_role TEXT;
+        `);
+    }
 }
 
 export async function runMigrations() {
@@ -376,7 +469,10 @@ export async function runMigrations() {
             name TEXT NOT NULL,
             description TEXT,
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT
+            created_at TEXT,
+            owner_user_id TEXT,
+            owner_store_id TEXT,
+            owner_role TEXT
         );
 
         CREATE TABLE IF NOT EXISTS products (
@@ -390,6 +486,9 @@ export async function runMigrations() {
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT,
             updated_at TEXT,
+            owner_user_id TEXT,
+            owner_store_id TEXT,
+            owner_role TEXT,
             FOREIGN KEY(category_id) REFERENCES categories(id)
         );
 
@@ -408,7 +507,10 @@ export async function runMigrations() {
             created_at TEXT NOT NULL,
             updated_at TEXT,
             offline_created_at TEXT,
-            synced_at TEXT
+            synced_at TEXT,
+            owner_user_id TEXT,
+            owner_store_id TEXT,
+            owner_role TEXT
         );
 
         CREATE TABLE IF NOT EXISTS order_items (
@@ -424,6 +526,9 @@ export async function runMigrations() {
     `);
 
     await ensureOrdersTableSchema();
+    await ensureCatalogTablesSchema();
     await ensureCatalogSyncQueueSchema();
     await ensureOrderSyncQueueSchema();
+    await ensureSyncQueueOwnerSchema("catalog_sync_queue");
+    await ensureSyncQueueOwnerSchema("order_sync_queue");
 }

@@ -5,6 +5,7 @@ import { OrderConfirmationQrPayload, OrderQrPayload } from "@/src/domains/order/
 import { decreaseLocalProductStock, getProductById } from "@/src/domains/catalog/repositories/catalog-repository";
 import { enqueueOrderSync } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { db } from "@/src/shared/database/database";
+import { getLocalSessionContext } from "@/src/shared/lib/local-session-context";
 
 export type LocalOrderRow = {
     id: string;
@@ -22,6 +23,9 @@ export type LocalOrderRow = {
     updated_at: string | null;
     offline_created_at: string | null;
     synced_at: string | null;
+    owner_user_id?: string | null;
+    owner_store_id?: string | null;
+    owner_role?: string | null;
 };
 
 export type LocalOrderItemRow = {
@@ -78,6 +82,12 @@ function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue |
 }
 
 export async function getLocalOrderByLocalId(localOrderId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     return db.getFirstAsync<LocalOrderRow>(
         `
         SELECT
@@ -95,16 +105,26 @@ export async function getLocalOrderByLocalId(localOrderId: string) {
             created_at,
             updated_at,
             offline_created_at,
-            synced_at
+            synced_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM orders
         WHERE local_order_id = ?
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         LIMIT 1
         `,
-        [localOrderId],
+        [localOrderId, context.userId, context.storeId, context.storeId],
     );
 }
 
 export async function getLocalOrderByRemoteId(remoteOrderId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     return db.getFirstAsync<LocalOrderRow>(
         `
         SELECT
@@ -122,16 +142,26 @@ export async function getLocalOrderByRemoteId(remoteOrderId: string) {
             created_at,
             updated_at,
             offline_created_at,
-            synced_at
+            synced_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM orders
         WHERE remote_order_id = ?
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         LIMIT 1
         `,
-        [remoteOrderId],
+        [remoteOrderId, context.userId, context.storeId, context.storeId],
     );
 }
 
 export async function getLocalOrderById(orderId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     return db.getFirstAsync<LocalOrderRow>(
         `
         SELECT
@@ -149,12 +179,16 @@ export async function getLocalOrderById(orderId: string) {
             created_at,
             updated_at,
             offline_created_at,
-            synced_at
+            synced_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM orders
         WHERE id = ?
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         LIMIT 1
         `,
-        [orderId],
+        [orderId, context.userId, context.storeId, context.storeId],
     );
 }
 
@@ -224,6 +258,7 @@ export async function createLocalOfflineOrder(params: {
     const orderId = randomUUID();
     const createdAt = now();
     const offlineCreatedAt = params.offlineCreatedAt ?? createdAt;
+    const context = await getLocalSessionContext();
 
     let totalAmount = 0;
 
@@ -245,10 +280,13 @@ export async function createLocalOfflineOrder(params: {
                 created_at,
                 updated_at,
                 offline_created_at,
-                synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                synced_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null, context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
         );
 
         for (const item of params.items) {
@@ -401,6 +439,12 @@ export async function getOrderSyncIssue(localOrderId: string) {
 }
 
 export async function getLocalOrders() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
     return db.getAllAsync<LocalOrderRow>(`
         SELECT
             id,
@@ -417,13 +461,24 @@ export async function getLocalOrders() {
             created_at,
             updated_at,
             offline_created_at,
-            synced_at
+            synced_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM orders
+        WHERE owner_user_id = ?
+           OR (? IS NOT NULL AND owner_store_id = ?)
         ORDER BY COALESCE(updated_at, created_at) DESC
-    `);
+    `, [context.userId, context.storeId, context.storeId]);
 }
 
 export async function getPendingLocalOrders() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
     return db.getAllAsync<LocalOrderRow>(`
         SELECT
             id,
@@ -440,11 +495,15 @@ export async function getPendingLocalOrders() {
             created_at,
             updated_at,
             offline_created_at,
-            synced_at
+            synced_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
         FROM orders
         WHERE sync_status = 'PENDING'
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         ORDER BY COALESCE(updated_at, created_at) ASC
-    `);
+    `, [context.userId, context.storeId, context.storeId]);
 }
 
 export async function getLocalOrderItems(orderId: string) {
@@ -551,6 +610,7 @@ export async function markOrderRejected(params: { localOrderId: string; message?
 
 export async function saveRemoteOrder(order: OrderResponse) {
     await db.withTransactionAsync(async () => {
+        const context = await getLocalSessionContext();
         const existingByLocalOrderId = order.localOrderId ? await getLocalOrderByLocalId(order.localOrderId) : null;
         const existingByRemoteOrderId = await getLocalOrderByRemoteId(order.id);
         const existingOrder = existingByLocalOrderId ?? existingByRemoteOrderId;
@@ -575,10 +635,13 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 created_at,
                 updated_at,
                 offline_created_at,
-                synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                synced_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, now()],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, now(), context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
         );
 
         if (!order.items?.length) {
@@ -625,11 +688,18 @@ export async function updateLocalOrderPaymentStatusByRemoteId(params: { remoteOr
 }
 
 export async function countPendingLocalOrders() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return 0;
+    }
+
     const row = await db.getFirstAsync<{ total: number }>(`
         SELECT COUNT(*) AS total
         FROM orders
         WHERE sync_status = 'PENDING'
-    `);
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
+    `, [context.userId, context.storeId, context.storeId]);
 
     return row?.total ?? 0;
 }

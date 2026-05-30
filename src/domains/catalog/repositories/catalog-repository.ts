@@ -1,6 +1,7 @@
 import { CatalogCategory, CatalogProduct, CatalogQrPayload, CatalogResponse, CategoryResponse } from "@/src/domains/catalog/types/catalog";
 import { randomUUID } from "expo-crypto";
 import { db } from "@/src/shared/database/database";
+import { getLocalSessionContext } from "@/src/shared/lib/local-session-context";
 
 type LocalCategoryRow = {
     id: string;
@@ -58,17 +59,24 @@ function stripLegacyPrefix(value: string | undefined | null, prefix: string) {
 }
 
 export async function clearCatalog() {
-    await db.execAsync(`
-        DELETE FROM products;
-        DELETE FROM categories;
-    `);
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return;
+    }
+
+    await db.runAsync(`DELETE FROM products WHERE owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?)`, [context.userId, context.storeId, context.storeId]);
+    await db.runAsync(`DELETE FROM categories WHERE owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?)`, [context.userId, context.storeId, context.storeId]);
 }
 
 export async function saveCatalog(catalog: CatalogResponse) {
-    await db.execAsync(`
-        DELETE FROM products;
-        DELETE FROM categories;
-    `);
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return;
+    }
+
+    await clearCatalog();
 
     for (const category of catalog.categories) {
         await db.runAsync(
@@ -78,10 +86,13 @@ export async function saveCatalog(catalog: CatalogResponse) {
                 name,
                 description,
                 active,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?)
+                created_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null, context.userId, context.storeId, context.role],
         );
 
         for (const product of category.products) {
@@ -97,16 +108,25 @@ export async function saveCatalog(catalog: CatalogResponse) {
                     stock_quantity,
                     active,
                     created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    updated_at,
+                    owner_user_id,
+                    owner_store_id,
+                    owner_role
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [product.id, category.id, catalog.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, product.active ? 1 : 0, product.createdAt ?? null, product.updatedAt ?? null],
+                [product.id, category.id, catalog.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, product.active ? 1 : 0, product.createdAt ?? null, product.updatedAt ?? null, context.userId, context.storeId, context.role],
             );
         }
     }
 }
 
 export async function getCategories() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
     const rows = await db.getAllAsync<LocalCategoryRow>(`
         SELECT
             id,
@@ -116,8 +136,9 @@ export async function getCategories() {
             created_at
         FROM categories
         WHERE active = 1
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         ORDER BY name ASC
-    `);
+    `, [context.userId, context.storeId, context.storeId]);
 
     return rows.map((row) => ({
         id: row.id,
@@ -130,6 +151,12 @@ export async function getCategories() {
 }
 
 export async function getProducts() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
     const rows = await db.getAllAsync<LocalProductRow>(`
         SELECT
             id,
@@ -144,13 +171,20 @@ export async function getProducts() {
             updated_at
         FROM products
         WHERE active = 1
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         ORDER BY name ASC
-    `);
+    `, [context.userId, context.storeId, context.storeId]);
 
     return rows.map(toCatalogProduct);
 }
 
 export async function getProductsByCategory(categoryId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return [];
+    }
+
     const rows = await db.getAllAsync<LocalProductRow>(
         `
         SELECT
@@ -167,15 +201,22 @@ export async function getProductsByCategory(categoryId: string) {
         FROM products
         WHERE active = 1
           AND category_id = ?
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         ORDER BY name ASC
         `,
-        [categoryId],
+        [categoryId, context.userId, context.storeId, context.storeId],
     );
 
     return rows.map(toCatalogProduct);
 }
 
 export async function getProductById(productId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     const row = await db.getFirstAsync<LocalProductRow>(
         `
         SELECT
@@ -191,9 +232,10 @@ export async function getProductById(productId: string) {
             updated_at
         FROM products
         WHERE id = ?
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         LIMIT 1
         `,
-        [productId],
+        [productId, context.userId, context.storeId, context.storeId],
     );
 
     return row ? toCatalogProduct(row) : null;
@@ -213,13 +255,21 @@ export async function getCatalogFromLocal() {
 }
 
 export async function getCatalogStoreIdFromLocal() {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     const row = await db.getFirstAsync<{ store_id: string }>(
         `
         SELECT store_id
         FROM products
         WHERE store_id IS NOT NULL
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
         LIMIT 1
         `,
+        [context.userId, context.storeId, context.storeId],
     );
 
     return row?.store_id ?? null;
@@ -248,6 +298,8 @@ export async function decreaseLocalProductStock(productId: string, quantity: num
 }
 
 export async function upsertLocalProduct(params: { id: string; categoryId: string; storeId: string; name: string; description?: string | null; price: number; stockQuantity: number; active?: boolean; createdAt?: string | null; updatedAt?: string | null }) {
+    const context = await getLocalSessionContext();
+
     await db.runAsync(
         `
         INSERT OR REPLACE INTO products (
@@ -260,16 +312,20 @@ export async function upsertLocalProduct(params: { id: string; categoryId: strin
             stock_quantity,
             active,
             created_at,
-            updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            updated_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [params.id, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString(), params.updatedAt ?? new Date().toISOString()],
+        [params.id, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString(), params.updatedAt ?? new Date().toISOString(), context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 }
 
 export async function createLocalProduct(params: { categoryId: string; storeId: string; name: string; description?: string | null; price: number; stockQuantity: number }) {
     const productId = randomUUID();
     const now = new Date().toISOString();
+    const context = await getLocalSessionContext();
 
     await db.runAsync(
         `
@@ -283,10 +339,13 @@ export async function createLocalProduct(params: { categoryId: string; storeId: 
             stock_quantity,
             active,
             created_at,
-            updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            updated_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [productId, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, 1, now, now],
+        [productId, params.categoryId, params.storeId, params.name, params.description ?? null, params.price, params.stockQuantity, 1, now, now, context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 
     return productId;
@@ -347,10 +406,13 @@ export async function adjustLocalProductStock(productId: string, quantityDelta: 
 }
 
 export async function saveCatalogFromQr(payload: CatalogQrPayload) {
-    await db.execAsync(`
-        DELETE FROM products;
-        DELETE FROM categories;
-    `);
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return payload.storeId;
+    }
+
+    await clearCatalog();
 
     for (const category of payload.categories) {
         await db.runAsync(
@@ -360,10 +422,13 @@ export async function saveCatalogFromQr(payload: CatalogQrPayload) {
                 name,
                 description,
                 active,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?)
+                created_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [category.id, category.name, category.description ?? null, 1, payload.generatedAt],
+            [category.id, category.name, category.description ?? null, 1, payload.generatedAt, context.userId, context.storeId, context.role],
         );
 
         for (const product of category.products) {
@@ -379,10 +444,13 @@ export async function saveCatalogFromQr(payload: CatalogQrPayload) {
                     stock_quantity,
                     active,
                     created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    updated_at,
+                    owner_user_id,
+                    owner_store_id,
+                    owner_role
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
-                [product.id, category.id, payload.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, 1, payload.generatedAt, payload.generatedAt],
+                [product.id, category.id, payload.storeId, product.name, product.description ?? null, product.price, product.stockQuantity, 1, payload.generatedAt, payload.generatedAt, context.userId, context.storeId, context.role],
             );
         }
     }
@@ -391,6 +459,8 @@ export async function saveCatalogFromQr(payload: CatalogQrPayload) {
 }
 
 export async function saveCategories(categories: CategoryResponse[]) {
+    const context = await getLocalSessionContext();
+
     for (const category of categories) {
         await db.runAsync(
             `
@@ -399,15 +469,20 @@ export async function saveCategories(categories: CategoryResponse[]) {
                 name,
                 description,
                 active,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?)
+                created_at,
+                owner_user_id,
+                owner_store_id,
+                owner_role
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null],
+            [category.id, category.name, category.description ?? null, category.active ? 1 : 0, category.createdAt ?? null, context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
         );
     }
 }
 
 export async function upsertLocalCategory(params: { id: string; name: string; description?: string | null; active?: boolean; createdAt?: string | null }) {
+    const context = await getLocalSessionContext();
+
     await db.runAsync(
         `
         INSERT OR REPLACE INTO categories (
@@ -415,16 +490,20 @@ export async function upsertLocalCategory(params: { id: string; name: string; de
             name,
             description,
             active,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?)
+            created_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [params.id, params.name, params.description ?? null, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString()],
+        [params.id, params.name, params.description ?? null, params.active === false ? 0 : 1, params.createdAt ?? new Date().toISOString(), context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 }
 
 export async function createLocalCategory(params: { name: string; description?: string | null }) {
     const categoryId = randomUUID();
     const now = new Date().toISOString();
+    const context = await getLocalSessionContext();
 
     await db.runAsync(
         `
@@ -433,10 +512,13 @@ export async function createLocalCategory(params: { name: string; description?: 
             name,
             description,
             active,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?)
+            created_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [categoryId, params.name, params.description ?? null, 1, now],
+        [categoryId, params.name, params.description ?? null, 1, now, context?.userId ?? null, context?.storeId ?? null, context?.role ?? null],
     );
 
     return categoryId;

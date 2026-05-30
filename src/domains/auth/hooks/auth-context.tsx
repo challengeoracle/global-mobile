@@ -1,15 +1,21 @@
 import { router, type Href } from "expo-router";
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { login as loginRequest, me, registerCustomer, registerSeller } from "@/src/domains/auth/services/auth-service";
 import { AuthResponse, LoginRequest, RegisterCustomerRequest, RegisterSellerRequest, UserResponse } from "@/src/domains/auth/types/auth";
+import { saveCatalog } from "@/src/domains/catalog/repositories/catalog-repository";
+import { getMyCatalog } from "@/src/domains/catalog/services/catalog-service";
+import { saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
+import { getMyPurchases, getMySales } from "@/src/domains/order/services/order-service";
+import { getMyPaymentTransactions, getMyPersonalWallet, getMyPersonalWalletTransactions, getMyWallet, getMyWalletTransactions } from "@/src/domains/payment/services/payment-service";
 import { clearLocalWorkspace } from "@/src/shared/database/repositories/local-workspace-repository";
-import { clearSession, getOrCreateDeviceId, getStoredUser, getToken, saveToken, saveUser } from "@/src/shared/lib/secure-storage";
+import { clearSession, getOrCreateDeviceId, getStoredSessionContext, getStoredUser, getToken, saveSessionContext, saveToken, saveUser, type StoredSessionContext } from "@/src/shared/lib/secure-storage";
 
 type AuthContextValue = {
     user: UserResponse | null;
     token: string | null;
     loading: boolean;
+    loadingMessage: string;
     isAuthenticated: boolean;
     login: (body: LoginRequest) => Promise<void>;
     signupSeller: (body: Omit<RegisterSellerRequest, "deviceId">) => Promise<void>;
@@ -20,11 +26,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function getHomeRoute(user: UserResponse): Href {
-    if (user.role === "SELLER") {
-        return "/(tabs)/home";
-    }
-
+function getHomeRoute(_user: UserResponse): Href {
     return "/(tabs)/home";
 }
 
@@ -33,13 +35,80 @@ async function persistAuth(response: AuthResponse) {
     await saveUser(response.user);
 }
 
+function buildSessionContext(user: UserResponse): StoredSessionContext {
+    return {
+        userId: user.id,
+        role: user.role,
+        storeId: user.storeId ?? null,
+    };
+}
+
+function hasContextChanged(previous: StoredSessionContext | null, current: StoredSessionContext) {
+    if (!previous) {
+        return false;
+    }
+
+    return previous.userId !== current.userId || previous.role !== current.role || (previous.storeId ?? null) !== (current.storeId ?? null);
+}
+
+function dedupeOrdersById<T extends { id: string }>(orders: T[]) {
+    return Array.from(new Map(orders.map((order) => [order.id, order])).values());
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<UserResponse | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadingMessage, setLoadingMessage] = useState("Preparando seus dados");
 
-    async function bootstrap() {
+    const prepareWorkspaceForUser = useCallback(async (nextUser: UserResponse) => {
+        const isSeller = nextUser.role === "SELLER";
+
+        setLoadingMessage("Sincronizando informações");
+
+        if (isSeller) {
+            const [catalog, sales, purchases] = await Promise.all([getMyCatalog(), getMySales(), getMyPurchases()]);
+            await saveCatalog(catalog);
+            await saveRemoteOrders(dedupeOrdersById([...sales, ...purchases]));
+        } else {
+            const purchases = await getMyPurchases();
+            await saveRemoteOrders(purchases);
+        }
+
+        setLoadingMessage("Carregando pedidos e carteira");
+
+        if (isSeller) {
+            await Promise.all([getMyWallet(), getMyWalletTransactions(), getMyPersonalWallet(), getMyPersonalWalletTransactions(), getMyPaymentTransactions()]);
+            return;
+        }
+
+        await Promise.all([getMyPersonalWallet(), getMyPersonalWalletTransactions(), getMyPaymentTransactions()]);
+    }, []);
+
+    const syncSessionContext = useCallback(async (nextUser: UserResponse) => {
+        const previousContext = await getStoredSessionContext();
+        const currentContext = buildSessionContext(nextUser);
+
+        if (hasContextChanged(previousContext, currentContext)) {
+            console.log("[Auth] Troca de contexto detectada. Limpando dados locais.", {
+                previousUserId: previousContext?.userId ?? null,
+                currentUserId: currentContext.userId,
+                previousRole: previousContext?.role ?? null,
+                currentRole: currentContext.role,
+                previousStoreId: previousContext?.storeId ?? null,
+                currentStoreId: currentContext.storeId,
+            });
+            await clearLocalWorkspace();
+        }
+
+        await prepareWorkspaceForUser(nextUser);
+        await saveSessionContext(currentContext);
+    }, [prepareWorkspaceForUser]);
+
+    const bootstrap = useCallback(async () => {
         try {
+            setLoadingMessage("Preparando seus dados");
+
             const storedToken = await getToken();
             const storedUser = await getStoredUser<UserResponse>();
 
@@ -57,8 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 setUser(freshUser);
                 await saveUser(freshUser);
+                await syncSessionContext(freshUser);
             } catch (err) {
-                console.warn("Não foi possível atualizar o usuário online. Mantendo sessão local.", err);
+                console.warn("NÃ£o foi possÃ­vel atualizar o usuÃ¡rio online. Mantendo sessÃ£o local.", err);
             }
         } catch {
             await clearSession();
@@ -66,59 +136,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
         } finally {
             setLoading(false);
+            setLoadingMessage("Preparando seus dados");
         }
-    }
+    }, [syncSessionContext]);
 
     useEffect(() => {
         bootstrap();
-    }, []);
+    }, [bootstrap]);
 
-    async function login(body: LoginRequest) {
-        const response = await loginRequest(body);
+    const login = useCallback(async (body: LoginRequest) => {
+        setLoading(true);
+        setLoadingMessage("Preparando seus dados");
 
-        await persistAuth(response);
+        try {
+            const response = await loginRequest(body);
 
-        setToken(response.token);
-        setUser(response.user);
+            await persistAuth(response);
+            await syncSessionContext(response.user);
 
-        router.replace(getHomeRoute(response.user));
-    }
+            setToken(response.token);
+            setUser(response.user);
 
-    async function signupSeller(body: Omit<RegisterSellerRequest, "deviceId">) {
-        const deviceId = await getOrCreateDeviceId();
+            router.replace(getHomeRoute(response.user));
+        } finally {
+            setLoading(false);
+            setLoadingMessage("Preparando seus dados");
+        }
+    }, [syncSessionContext]);
 
-        const response = await registerSeller({
-            ...body,
-            deviceId,
-        });
+    const signupSeller = useCallback(async (body: Omit<RegisterSellerRequest, "deviceId">) => {
+        setLoading(true);
+        setLoadingMessage("Preparando seus dados");
 
-        await persistAuth(response);
+        try {
+            const deviceId = await getOrCreateDeviceId();
 
-        setToken(response.token);
-        setUser(response.user);
+            const response = await registerSeller({
+                ...body,
+                deviceId,
+            });
 
-        router.replace(getHomeRoute(response.user));
-    }
+            await persistAuth(response);
+            await syncSessionContext(response.user);
 
-    async function signupCustomer(body: RegisterCustomerRequest) {
-        const response = await registerCustomer(body);
+            setToken(response.token);
+            setUser(response.user);
 
-        await persistAuth(response);
+            router.replace(getHomeRoute(response.user));
+        } finally {
+            setLoading(false);
+            setLoadingMessage("Preparando seus dados");
+        }
+    }, [syncSessionContext]);
 
-        setToken(response.token);
-        setUser(response.user);
+    const signupCustomer = useCallback(async (body: RegisterCustomerRequest) => {
+        setLoading(true);
+        setLoadingMessage("Preparando seus dados");
 
-        router.replace(getHomeRoute(response.user));
-    }
+        try {
+            const response = await registerCustomer(body);
 
-    async function refreshUser() {
+            await persistAuth(response);
+            await syncSessionContext(response.user);
+
+            setToken(response.token);
+            setUser(response.user);
+
+            router.replace(getHomeRoute(response.user));
+        } finally {
+            setLoading(false);
+            setLoadingMessage("Preparando seus dados");
+        }
+    }, [syncSessionContext]);
+
+    const refreshUser = useCallback(async () => {
         const freshUser = await me();
 
         setUser(freshUser);
         await saveUser(freshUser);
-    }
+        await syncSessionContext(freshUser);
+    }, [syncSessionContext]);
 
-    async function logout() {
+    const logout = useCallback(async () => {
         await clearSession();
         await clearLocalWorkspace();
 
@@ -126,13 +225,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
 
         router.replace("/login");
-    }
+    }, []);
 
     const value = useMemo<AuthContextValue>(
         () => ({
             user,
             token,
             loading,
+            loadingMessage,
             isAuthenticated: !!token && !!user,
             login,
             signupSeller,
@@ -140,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logout,
             refreshUser,
         }),
-        [user, token, loading],
+        [user, token, loading, loadingMessage, login, signupSeller, signupCustomer, logout, refreshUser],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
