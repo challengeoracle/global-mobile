@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { CatalogQrModal } from "@/src/components/catalog/catalog-qr-modal";
@@ -21,11 +21,14 @@ import { OrderScannerModal } from "@/src/components/orders/order-scanner-modal";
 import { PageHeader } from "@/src/components/ui/page-header";
 import { clearCatalog } from "@/src/database/repositories/catalog-repository";
 import { buildOrderConfirmationPayloadFromLocal } from "@/src/database/repositories/order-repository";
-
 import { useCatalogScreen } from "@/src/hooks/use-catalog-screen";
 import { useOrderFlow } from "@/src/hooks/use-order-flow";
 import { buildCatalogQrPayload, encodeCatalogQr } from "@/src/utils/catalog-qr";
 import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
+
+type ActiveModal = "catalogQr" | "customerCatalog" | "productDetails" | "productForm" | "stockAdjust" | "cart" | "orderQr" | "sellerConfirmationQr";
+
+const MODAL_TRANSITION_MS = 220;
 
 export default function CatalogScreen() {
     const router = useRouter();
@@ -37,19 +40,14 @@ export default function CatalogScreen() {
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
     const whiteIcon = "#ffffff";
 
-    const [qrVisible, setQrVisible] = useState(false);
+    const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
     const [scannerVisible, setScannerVisible] = useState(false);
-    const [customerCatalogVisible, setCustomerCatalogVisible] = useState(false);
-    const [cartVisible, setCartVisible] = useState(false);
-
-    const [orderQrVisible, setOrderQrVisible] = useState(false);
     const [orderScannerVisible, setOrderScannerVisible] = useState(false);
-
     const [orderConfirmationScannerVisible, setOrderConfirmationScannerVisible] = useState(false);
-    const [sellerConfirmationQrVisible, setSellerConfirmationQrVisible] = useState(false);
     const [sellerConfirmationQrValue, setSellerConfirmationQrValue] = useState<string | null>(null);
     const [sellerConfirmationSynced, setSellerConfirmationSynced] = useState(false);
     const [sellerConfirmationMessage, setSellerConfirmationMessage] = useState<string | null>(null);
+    const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const qrData = useMemo(() => {
         if (!catalog.catalogStoreId || catalog.categories.length === 0) {
@@ -74,40 +72,72 @@ export default function CatalogScreen() {
         };
     }, [catalog.catalogStoreId, catalog.categories]);
 
+    function clearPendingTransition() {
+        if (transitionTimerRef.current) {
+            clearTimeout(transitionTimerRef.current);
+            transitionTimerRef.current = null;
+        }
+    }
+
+    function closeActiveModal() {
+        clearPendingTransition();
+        setActiveModal(null);
+    }
+
+    function transitionToModal(nextModal: ActiveModal, beforeOpen?: () => void, delayMs = MODAL_TRANSITION_MS) {
+        clearPendingTransition();
+        beforeOpen?.();
+
+        if (activeModal === null) {
+            setActiveModal(nextModal);
+            return;
+        }
+
+        setActiveModal(null);
+        transitionTimerRef.current = setTimeout(() => {
+            setActiveModal(nextModal);
+            transitionTimerRef.current = null;
+        }, delayMs);
+    }
+
+    function openFullScreenScanner(openScanner: () => void) {
+        clearPendingTransition();
+        setActiveModal(null);
+        openScanner();
+    }
+
     async function handleClearCustomerCatalog() {
+        clearPendingTransition();
         orders.clearCart();
+        orders.clearGeneratedOrderQr();
 
         await clearCatalog();
         await catalog.loadLocalCatalog();
 
-        setCustomerCatalogVisible(false);
-        setCartVisible(false);
-        setOrderQrVisible(false);
+        setActiveModal(null);
         setOrderConfirmationScannerVisible(false);
-        orders.clearGeneratedOrderQr();
     }
 
     async function handleGenerateOrderQr() {
         const generated = await orders.generateOrderQr();
 
         if (generated) {
-            setOrderQrVisible(true);
+            transitionToModal("orderQr");
         }
     }
 
     function handleOpenConfirmationScannerFromClient() {
-        setOrderQrVisible(false);
-
+        clearPendingTransition();
+        setActiveModal(null);
         setTimeout(() => {
             setOrderConfirmationScannerVisible(true);
-        }, 500);
+        }, MODAL_TRANSITION_MS);
     }
 
     async function handleClientScannedSellerConfirmation(_localOrderId: string) {
+        clearPendingTransition();
         setOrderConfirmationScannerVisible(false);
-        setOrderQrVisible(false);
-        setCartVisible(false);
-        setCustomerCatalogVisible(false);
+        setActiveModal(null);
 
         orders.clearGeneratedOrderQr();
         orders.clearCart();
@@ -142,12 +172,10 @@ export default function CatalogScreen() {
             items: confirmation.items,
         });
 
-        setTimeout(() => {
-            setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
-            setSellerConfirmationSynced(synced);
-            setSellerConfirmationMessage(confirmation.message ?? null);
-            setSellerConfirmationQrVisible(true);
-        }, 500);
+        setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
+        setSellerConfirmationSynced(synced);
+        setSellerConfirmationMessage(confirmation.message ?? null);
+        transitionToModal("sellerConfirmationQr");
     }
 
     async function handleOrderConfirmedBySeller(localOrderId: string) {
@@ -170,7 +198,7 @@ export default function CatalogScreen() {
     }
 
     function handleCloseSellerConfirmationQr() {
-        setSellerConfirmationQrVisible(false);
+        closeActiveModal();
         setSellerConfirmationQrValue(null);
         setSellerConfirmationSynced(false);
         setSellerConfirmationMessage(null);
@@ -191,13 +219,12 @@ export default function CatalogScreen() {
                     hasImportedCatalog={catalog.products.length > 0}
                     productCount={catalog.products.length}
                     onScanCatalog={() => {
-                        setCustomerCatalogVisible(false);
-                        setCartVisible(false);
-                        setOrderQrVisible(false);
+                        clearPendingTransition();
+                        setActiveModal(null);
                         setOrderConfirmationScannerVisible(false);
                         setScannerVisible(true);
                     }}
-                    onOpenCatalog={() => setCustomerCatalogVisible(true)}
+                    onOpenCatalog={() => transitionToModal("customerCatalog")}
                     onClearCatalog={handleClearCustomerCatalog}
                 />
 
@@ -209,36 +236,35 @@ export default function CatalogScreen() {
                         await catalog.loadLocalCatalog();
 
                         setScannerVisible(false);
-
                         setTimeout(() => {
-                            setCustomerCatalogVisible(true);
-                        }, 500);
+                            setActiveModal("customerCatalog");
+                        }, MODAL_TRANSITION_MS);
                     }}
                 />
 
-                <CustomerCatalogModal visible={customerCatalogVisible} products={catalog.products} cartCount={orders.itemCount} onClose={() => setCustomerCatalogVisible(false)} onProductPress={catalog.openProduct} onOpenCart={() => setCartVisible(true)} />
+                <CustomerCatalogModal visible={activeModal === "customerCatalog"} products={catalog.products} cartCount={orders.itemCount} onClose={closeActiveModal} onProductPress={(product) => transitionToModal("productDetails", () => catalog.openProduct(product))} onOpenCart={() => transitionToModal("cart")} />
 
                 <ProductDetailsModal
-                    visible={catalog.detailsVisible}
+                    visible={activeModal === "productDetails"}
                     product={catalog.selectedProduct}
                     isSeller={false}
-                    onClose={() => catalog.setDetailsVisible(false)}
+                    onClose={closeActiveModal}
                     onEdit={catalog.openEdit}
                     onAdjustStock={catalog.openStock}
                     onDeactivate={catalog.deactivateProduct}
                     onAddToCart={(product) => {
                         orders.addToCart(product);
-                        catalog.setDetailsVisible(false);
+                        transitionToModal("cart");
                     }}
                 />
 
-                <CartModal visible={cartVisible} items={orders.cartItems} totalAmount={orders.totalAmount} syncing={orders.syncing} message={orders.message} onClose={() => setCartVisible(false)} onRemove={orders.removeFromCart} onQuantityChange={orders.updateQuantity} onCheckout={handleGenerateOrderQr} />
+                <CartModal visible={activeModal === "cart"} items={orders.cartItems} totalAmount={orders.totalAmount} syncing={orders.syncing} message={orders.message} onClose={closeActiveModal} onRemove={orders.removeFromCart} onQuantityChange={orders.updateQuantity} onCheckout={handleGenerateOrderQr} />
 
                 <OrderQrModal
-                    visible={orderQrVisible}
+                    visible={activeModal === "orderQr"}
                     orderQr={orders.generatedOrderQr}
                     onClose={() => {
-                        setOrderQrVisible(false);
+                        closeActiveModal();
                         orders.clearGeneratedOrderQr();
                     }}
                     onScanConfirmation={handleOpenConfirmationScannerFromClient}
@@ -251,8 +277,8 @@ export default function CatalogScreen() {
 
                         if (orders.generatedOrderQr) {
                             setTimeout(() => {
-                                setOrderQrVisible(true);
-                            }, 500);
+                                setActiveModal("orderQr");
+                            }, MODAL_TRANSITION_MS);
                         }
                     }}
                     onConfirmed={handleClientScannedSellerConfirmation}
@@ -304,10 +330,9 @@ export default function CatalogScreen() {
                         <View className="flex-row gap-2">
                             <Pressable
                                 onPress={() => {
-                                    setSellerConfirmationQrVisible(false);
                                     setSellerConfirmationQrValue(null);
                                     setSellerConfirmationMessage(null);
-                                    setOrderScannerVisible(true);
+                                    openFullScreenScanner(() => setOrderScannerVisible(true));
                                 }}
                                 className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4"
                             >
@@ -316,11 +341,11 @@ export default function CatalogScreen() {
                                 <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Pedido</Text>
                             </Pressable>
 
-                            <Pressable onPress={() => setQrVisible(true)} className="h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card">
+                            <Pressable onPress={() => transitionToModal("catalogQr")} className="h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card">
                                 <Ionicons name="qr-code-outline" size={18} color={iconColor} />
                             </Pressable>
 
-                            <Pressable onPress={catalog.openCreate} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
+                            <Pressable onPress={() => transitionToModal("productForm", catalog.openCreate)} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
                                 <Ionicons name="add" size={18} color={whiteIcon} />
 
                                 <Text className="text-xs font-black uppercase tracking-[1px] text-white">Produto</Text>
@@ -330,7 +355,7 @@ export default function CatalogScreen() {
 
                     <View className="gap-3">
                         {catalog.products.length > 0 ? (
-                            catalog.products.map((product) => <ProductCard key={product.id} product={product} onPress={() => catalog.openProduct(product)} />)
+                            catalog.products.map((product) => <ProductCard key={product.id} product={product} onPress={() => transitionToModal("productDetails", () => catalog.openProduct(product))} />)
                         ) : (
                             <View className="rounded-3xl border border-dashed border-border bg-card p-6">
                                 <Text className="text-center text-base font-bold text-card-foreground">Nenhum produto encontrado</Text>
@@ -342,17 +367,36 @@ export default function CatalogScreen() {
                 </View>
             </ScrollView>
 
-            <CatalogQrModal visible={qrVisible} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={() => setQrVisible(false)} />
+            <CatalogQrModal visible={activeModal === "catalogQr"} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={closeActiveModal} />
 
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
 
-            <OrderConfirmationQrModal visible={sellerConfirmationQrVisible} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} message={sellerConfirmationMessage} onClose={handleCloseSellerConfirmationQr} />
+            <OrderConfirmationQrModal visible={activeModal === "sellerConfirmationQr"} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} message={sellerConfirmationMessage} onClose={handleCloseSellerConfirmationQr} />
 
-            <ProductDetailsModal visible={catalog.detailsVisible} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={() => catalog.setDetailsVisible(false)} onEdit={catalog.openEdit} onAdjustStock={catalog.openStock} onDeactivate={catalog.deactivateProduct} />
+            <ProductDetailsModal visible={activeModal === "productDetails"} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={closeActiveModal} onEdit={() => transitionToModal("productForm", catalog.openEdit)} onAdjustStock={() => transitionToModal("stockAdjust", catalog.openStock)} onDeactivate={catalog.deactivateProduct} />
 
-            <ProductFormModal visible={catalog.formVisible} mode={catalog.formMode} categories={catalog.categories} initialCategoryId={catalog.selectedCategoryId ?? catalog.categories[0]?.id ?? ""} initialProduct={catalog.formMode === "edit" ? catalog.selectedProduct : null} onClose={() => catalog.setFormVisible(false)} onSubmit={catalog.submitProduct} />
+            <ProductFormModal
+                visible={activeModal === "productForm"}
+                mode={catalog.formMode}
+                categories={catalog.categories}
+                initialCategoryId={catalog.selectedCategoryId ?? catalog.categories[0]?.id ?? ""}
+                initialProduct={catalog.formMode === "edit" ? catalog.selectedProduct : null}
+                onClose={closeActiveModal}
+                onSubmit={async (values) => {
+                    await catalog.submitProduct(values);
+                    closeActiveModal();
+                }}
+            />
 
-            <StockAdjustModal visible={catalog.stockVisible} product={catalog.selectedProduct} onClose={() => catalog.setStockVisible(false)} onConfirm={catalog.adjustStock} />
+            <StockAdjustModal
+                visible={activeModal === "stockAdjust"}
+                product={catalog.selectedProduct}
+                onClose={closeActiveModal}
+                onConfirm={async (quantityDelta) => {
+                    await catalog.adjustStock(quantityDelta);
+                    closeActiveModal();
+                }}
+            />
         </View>
     );
 }

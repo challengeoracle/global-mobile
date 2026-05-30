@@ -119,7 +119,7 @@ export function useCatalogScreen() {
             return remoteCatalog.storeId;
         }
 
-        throw new Error("Store ID nao encontrado para salvar o catalogo local.");
+        throw new Error("Store ID não encontrado para salvar o catálogo local.");
     }
 
     function scheduleCatalogSync() {
@@ -166,7 +166,7 @@ export function useCatalogScreen() {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
 
-                setMessage("Sem conexao. Catalogo carregado localmente.");
+                setMessage("Sem conexão. Catálogo carregado localmente.");
 
                 return;
             }
@@ -188,12 +188,12 @@ export function useCatalogScreen() {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
 
-            setMessage("Catalogo local atualizado.");
+            setMessage("Catálogo local atualizado.");
         } catch (err) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
 
-            setMessage(getErrorMessage(err, "Erro ao atualizar catalogo."));
+            setMessage(getErrorMessage(err, "Erro ao atualizar catálogo."));
         }
     }
 
@@ -201,7 +201,7 @@ export function useCatalogScreen() {
         if (!isSeller) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
-            setMessage("Catalogo local atualizado.");
+            setMessage("Catálogo local atualizado.");
 
             return;
         }
@@ -370,7 +370,7 @@ export function useCatalogScreen() {
 
     async function removeCategory(category: CatalogCategory) {
         if (category.products.length > 0) {
-            setMessage("Nao desative uma categoria com produtos. Mova ou desative os produtos antes.");
+            setMessage("Não desative uma categoria com produtos. Mova ou desative os produtos antes.");
 
             return;
         }
