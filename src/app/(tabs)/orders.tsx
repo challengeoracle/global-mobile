@@ -9,8 +9,10 @@ import { OrderConfirmationQrModal } from "@/src/domains/order/components/order-c
 import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow } from "@/src/domains/order/repositories/order-repository";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
 import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
+import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
+import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 
 function money(value: number) {
     return value.toLocaleString("pt-BR", {
@@ -64,6 +66,7 @@ export default function OrdersScreen() {
     const isSeller = user?.role === "SELLER";
 
     const ordersFlow = useOrderFlow();
+    const orderSyncStatus = useSyncStatus("orders");
 
     const [orders, setOrders] = useState<LocalOrderRow[]>([]);
     const [selectedOrder, setSelectedOrder] = useState<LocalOrderRow | null>(null);
@@ -198,6 +201,20 @@ export default function OrdersScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="px-6 pb-10 pt-14">
                     <PageHeader eyebrow="Pedidos" title={isSeller ? "Vendas da loja" : "Minhas compras"} />
+
+                    <SyncStatusCard
+                        variant="contextual"
+                        title="Fila de pedidos"
+                        onlineLabel={orderSyncStatus.network.isConnected ? "Online" : "Offline"}
+                        onlineColor={orderSyncStatus.network.color}
+                        isConnected={orderSyncStatus.network.isConnected}
+                        isSyncing={orderSyncStatus.isSyncing}
+                        pendingCount={orderSyncStatus.pendingCount}
+                        rejectedCount={orderSyncStatus.rejectedCount}
+                        pendingLabel="de pedidos"
+                        lastError={orderSyncStatus.scopedLastError}
+                        syncingNow={orderSyncStatus.syncingNow}
+                    />
 
                     <View className="mb-5 rounded-3xl border border-border bg-card p-4">
                         <View className="flex-row items-start justify-between gap-4">

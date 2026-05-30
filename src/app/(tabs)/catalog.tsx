@@ -24,7 +24,9 @@ import { OrderScannerModal } from "@/src/domains/order/components/order-scanner-
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
 import { buildOrderConfirmationPayloadFromLocal } from "@/src/domains/order/repositories/order-repository";
 import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
+import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 
 type ActiveModal = "catalogQr" | "customerCatalog" | "productDetails" | "productForm" | "stockAdjust" | "cart" | "orderQr" | "sellerConfirmationQr";
 
@@ -34,6 +36,7 @@ export default function CatalogScreen() {
     const router = useRouter();
     const catalog = useCatalogScreen();
     const orders = useOrderFlow(catalog.catalogStoreId);
+    const catalogSyncStatus = useSyncStatus("catalog");
 
     const { colorScheme } = useColorScheme();
 
@@ -292,6 +295,20 @@ export default function CatalogScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="px-6 pb-10 pt-14">
                     <PageHeader eyebrow="Catálogo" title="Minha loja" />
+
+                    <SyncStatusCard
+                        variant="contextual"
+                        title="Fila de catálogo"
+                        onlineLabel={catalogSyncStatus.network.isConnected ? "Online" : "Offline"}
+                        onlineColor={catalogSyncStatus.network.color}
+                        isConnected={catalogSyncStatus.network.isConnected}
+                        isSyncing={catalogSyncStatus.isSyncing}
+                        pendingCount={catalogSyncStatus.pendingCount}
+                        rejectedCount={catalogSyncStatus.rejectedCount}
+                        pendingLabel="de catálogo"
+                        lastError={catalogSyncStatus.scopedLastError}
+                        syncingNow={catalogSyncStatus.syncingNow}
+                    />
 
                     <CatalogToolbar
                         categories={catalog.categories}

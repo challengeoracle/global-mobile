@@ -21,6 +21,15 @@ type SyncQueueRow = {
     next_retry_at: string | null;
 };
 
+type CountRow = {
+    total: number;
+};
+
+type ErrorRow = {
+    last_error: string | null;
+    updated_at: string;
+};
+
 type PendingCatalogChange = CatalogSyncItem & {
     queueId: string;
     operationId: string;
@@ -129,6 +138,25 @@ function getPendingCountQuery(tableName: "catalog_sync_queue" | "order_sync_queu
     `;
 }
 
+function getRejectedCountQuery(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    return `
+        SELECT COUNT(*) AS total
+        FROM ${tableName}
+        WHERE status = 'REJECTED'
+    `;
+}
+
+function getLatestErrorQuery(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    return `
+        SELECT last_error, updated_at
+        FROM ${tableName}
+        WHERE status IN ('FAILED', 'REJECTED')
+          AND last_error IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT 1
+    `;
+}
+
 async function markQueueItemsSyncing(tableName: "catalog_sync_queue" | "order_sync_queue", queueIds: string[]) {
     if (!queueIds.length) {
         return;
@@ -228,8 +256,17 @@ export async function getPendingCatalogChanges() {
 }
 
 export async function countPendingCatalogChanges() {
-    const row = await db.getFirstAsync<{ total: number }>(getPendingCountQuery("catalog_sync_queue"));
+    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("catalog_sync_queue"));
     return row?.total ?? 0;
+}
+
+export async function countRejectedCatalogChanges() {
+    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("catalog_sync_queue"));
+    return row?.total ?? 0;
+}
+
+export async function getLatestCatalogQueueError() {
+    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("catalog_sync_queue"));
 }
 
 export async function markCatalogChangesSyncing(queueIds: string[]) {
@@ -295,8 +332,17 @@ export async function getPendingOrderSyncQueue() {
 }
 
 export async function countPendingOrderSyncQueue() {
-    const row = await db.getFirstAsync<{ total: number }>(getPendingCountQuery("order_sync_queue"));
+    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("order_sync_queue"));
     return row?.total ?? 0;
+}
+
+export async function countRejectedOrderSyncQueue() {
+    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("order_sync_queue"));
+    return row?.total ?? 0;
+}
+
+export async function getLatestOrderQueueError() {
+    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("order_sync_queue"));
 }
 
 export async function markOrderQueueSyncing(queueIds: string[]) {

@@ -7,12 +7,15 @@ import { updateSellerDevice } from "@/src/domains/auth/services/auth-service";
 import { AccountCard } from "@/src/shared/components/settings/account-card";
 import { SettingsItem } from "@/src/shared/components/settings/settings-item";
 import { SettingsDivider, SettingsSection } from "@/src/shared/components/settings/settings-section";
+import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 import { regenerateDeviceId } from "@/src/shared/lib/secure-storage";
 
 export default function SettingsScreen() {
     const { user, logout, refreshUser } = useAuth();
     const { colorScheme, toggleColorScheme } = useColorScheme();
+    const syncStatus = useSyncStatus("all");
 
     const [updatingDevice, setUpdatingDevice] = useState(false);
 
@@ -58,6 +61,30 @@ export default function SettingsScreen() {
                 <PageHeader eyebrow="Configurações" title="Preferências" />
 
                 <AccountCard name={user?.name} email={user?.email} role={user?.role} storeName={user?.storeName} deviceId={user?.deviceId} />
+
+                <View className="mb-6">
+                    <SyncStatusCard
+                        variant="detailed"
+                        title={isSeller ? "Sincronização do vendedor" : "Estado local"}
+                        onlineLabel={syncStatus.network.isConnected ? "Online" : "Offline"}
+                        onlineColor={syncStatus.network.color}
+                        isConnected={syncStatus.network.isConnected}
+                        isSyncing={syncStatus.isSyncing}
+                        syncingNow={syncStatus.syncingNow}
+                        pendingCount={syncStatus.pendingCount}
+                        pendingCatalogChanges={syncStatus.pendingCatalogChanges}
+                        pendingOrders={syncStatus.pendingOrders}
+                        rejectedCount={syncStatus.rejectedCount}
+                        pendingLabel="pendência(s)"
+                        lastSyncAt={syncStatus.lastSyncAt}
+                        lastError={syncStatus.scopedLastError}
+                        deviceId={syncStatus.deviceId}
+                        canSync={isSeller && syncStatus.canSync}
+                        onSyncNow={async () => {
+                            await syncStatus.syncNow();
+                        }}
+                    />
+                </View>
 
                 <SettingsSection>
                     <SettingsItem icon={isDark ? "moon" : "sunny"} title="Tema" description={isDark ? "Escuro" : "Claro"} onPress={toggleColorScheme} />
