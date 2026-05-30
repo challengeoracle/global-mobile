@@ -2,6 +2,7 @@ import { getToken } from "./secure-storage";
 
 const AUTH_API_URL = process.env.EXPO_PUBLIC_AUTH_API_URL;
 const SALES_API_URL = process.env.EXPO_PUBLIC_SALES_API_URL;
+const PAYMENT_API_URL = process.env.EXPO_PUBLIC_PAYMENT_API_URL;
 
 if (!AUTH_API_URL) {
     console.warn("EXPO_PUBLIC_AUTH_API_URL não configurada.");
@@ -69,4 +70,8 @@ export function authRequest<T>(path: string, options: RequestOptions = {}) {
 
 export function salesRequest<T>(path: string, options: RequestOptions = {}) {
     return request<T>(SALES_API_URL, path, options);
+}
+
+export function paymentRequest<T>(path: string, options: RequestOptions = {}) {
+    return request<T>(PAYMENT_API_URL, path, options);
 }

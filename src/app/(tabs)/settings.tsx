@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useColorScheme } from "nativewind";
 import { useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
@@ -27,7 +28,7 @@ export default function SettingsScreen() {
             return;
         }
 
-        Alert.alert("Atualizar dispositivo", "Este aparelho será usado como identificador local para sincronizações futuras.", [
+        Alert.alert("Atualizar dispositivo", "Este aparelho sera usado como identificador local para sincronizacoes futuras.", [
             {
                 text: "Cancelar",
                 style: "cancel",
@@ -44,9 +45,9 @@ export default function SettingsScreen() {
                         await updateSellerDevice(newDeviceId);
                         await refreshUser();
 
-                        Alert.alert("Dispositivo atualizado", "Este aparelho agora é o identificador local da sua conta.");
+                        Alert.alert("Dispositivo atualizado", "Este aparelho agora e o identificador local da sua conta.");
                     } catch (err) {
-                        Alert.alert("Erro ao atualizar", err instanceof Error ? err.message : "Não foi possível atualizar o dispositivo.");
+                        Alert.alert("Erro ao atualizar", err instanceof Error ? err.message : "Nao foi possivel atualizar o dispositivo.");
                     } finally {
                         setUpdatingDevice(false);
                     }
@@ -56,7 +57,7 @@ export default function SettingsScreen() {
     }
 
     function handleLogout() {
-        Alert.alert("Sair da conta", "Fazer logout neste aparelho descarta todas as alterações locais e pedidos pendentes que ainda não foram sincronizados. Deseja continuar?", [
+        Alert.alert("Sair da conta", "Fazer logout neste aparelho descarta todas as alteracoes locais e pedidos pendentes que ainda nao foram sincronizados. Deseja continuar?", [
             {
                 text: "Cancelar",
                 style: "cancel",
@@ -74,14 +75,14 @@ export default function SettingsScreen() {
     return (
         <ScrollView className="flex-1 bg-background" showsVerticalScrollIndicator={false}>
             <View className="px-6 pb-10 pt-14">
-                <PageHeader eyebrow="Configurações" title="Preferências" />
+                <PageHeader eyebrow="Configuracoes" title="Preferencias" />
 
                 <AccountCard name={user?.name} email={user?.email} role={user?.role} storeName={user?.storeName} deviceId={user?.deviceId} />
 
                 <View className="mb-6">
                     <SyncStatusCard
                         variant="detailed"
-                        title={isSeller ? "Estado local e sincronização" : "Estado local"}
+                        title={isSeller ? "Estado local e sincronizacao" : "Estado local"}
                         onlineLabel={syncStatus.network.isConnected ? "Online" : "Offline"}
                         onlineColor={syncStatus.network.color}
                         isConnected={syncStatus.network.isConnected}
@@ -107,11 +108,15 @@ export default function SettingsScreen() {
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="cloud-upload-outline" title="Sincronização" description="Alterações locais salvas aqui e envio automático quando houver internet" />
+                    <SettingsItem icon="cloud-upload-outline" title="Sincronizacao" description="Alteracoes locais salvas aqui e envio automatico quando houver internet" />
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="shield-checkmark-outline" title="Operação local" description="Pedidos e catálogo ficam salvos neste aparelho até sincronizar" />
+                    <SettingsItem icon="shield-checkmark-outline" title="Operacao local" description="Pedidos e catalogo ficam salvos neste aparelho ate sincronizar" />
+
+                    <SettingsDivider />
+
+                    <SettingsItem icon="list-outline" title="Operacao" description="Ver como o fluxo offline-first funciona no OffPay" onPress={() => router.push("/(tabs)/explore")} />
 
                     {isSeller ? (
                         <>
@@ -123,10 +128,10 @@ export default function SettingsScreen() {
                 </SettingsSection>
 
                 <SettingsSection>
-                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Descartar dados locais não sincronizados e encerrar sessão" iconColor="#ef4444" danger onPress={handleLogout} />
+                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Descartar dados locais nao sincronizados e encerrar sessao" iconColor="#ef4444" danger onPress={handleLogout} />
                 </SettingsSection>
 
-                <Text className="mt-2 text-center text-xs leading-5 text-muted-foreground">OffPay mantém sua operação preparada para vender e pagar mesmo com conexão instável.</Text>
+                <Text className="mt-2 text-center text-xs leading-5 text-muted-foreground">OffPay mantem sua operacao preparada para vender e pagar mesmo com conexao instavel.</Text>
             </View>
         </ScrollView>
     );

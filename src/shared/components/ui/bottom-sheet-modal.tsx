@@ -101,10 +101,10 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
     const body = scrollContent ? <ScrollView showsVerticalScrollIndicator={false} className="flex-1">{children}</ScrollView> : <View className="flex-1">{children}</View>;
 
     return (
-        <Modal visible={mounted} transparent animationType="none" onRequestClose={closeAnimated}>
+        <Modal visible={mounted} transparent animationType="none" onRequestClose={() => closeAnimated()}>
             <View className="flex-1 justify-end">
                 <Animated.View style={{ opacity: backdropOpacity }} className="absolute inset-0 bg-black/50">
-                    <Pressable className="flex-1" onPress={closeAnimated} />
+                    <Pressable className="flex-1" onPress={() => closeAnimated()} />
                 </Animated.View>
 
                 <Animated.View style={{ transform: [{ translateY }] }} className={`${maxHeightClassName} h-[94%] rounded-t-[32px] border-x border-t border-border bg-background px-6 pb-6 pt-4`}>
@@ -118,7 +118,7 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
                             <Text className="mt-2 text-3xl font-black tracking-[-1px] text-foreground">{title}</Text>
                         </View>
 
-                        <Pressable onPress={closeAnimated} className="h-11 w-11 items-center justify-center rounded-2xl bg-primary">
+                        <Pressable onPress={() => closeAnimated()} className="h-11 w-11 items-center justify-center rounded-2xl bg-primary">
                             <Ionicons name="close" size={20} color="#ffffff" />
                         </Pressable>
                     </View>

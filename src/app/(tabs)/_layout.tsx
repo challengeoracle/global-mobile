@@ -50,22 +50,24 @@ export default function TabLayout() {
                     textTransform: "uppercase",
                 },
                 tabBarStyle: {
-                    height: 68 + insets.bottom,
-                    paddingBottom: insets.bottom + 10,
-                    paddingTop: 10,
+                    height: 76 + insets.bottom,
+                    paddingBottom: insets.bottom + 12,
+                    paddingTop: 12,
+                    paddingHorizontal: 10,
                     backgroundColor: isDark ? "#09090b" : "#ffffff",
                     borderTopWidth: 1,
                     borderTopColor: isDark ? "#27272a" : "#e4e4e7",
                 },
                 tabBarItemStyle: {
                     paddingVertical: 4,
+                    paddingHorizontal: 2,
                 },
             }}
         >
             <Tabs.Screen
                 name="home"
                 options={{
-                    title: "Início",
+                    title: "Inicio",
                     tabBarIcon: createTabBarIcon("home-outline"),
                 }}
             />
@@ -73,15 +75,14 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="explore"
                 options={{
-                    title: "Operação",
-                    tabBarIcon: createTabBarIcon("list-outline"),
+                    href: null,
                 }}
             />
 
             <Tabs.Screen
                 name="catalog"
                 options={{
-                    title: "Catálogo",
+                    title: "Catalogo",
                     tabBarIcon: createTabBarIcon("book-outline"),
                 }}
             />
@@ -90,14 +91,22 @@ export default function TabLayout() {
                 name="orders"
                 options={{
                     title: "Pedidos",
-                    tabBarIcon: createTabBarIcon("book-outline"),
+                    tabBarIcon: createTabBarIcon("receipt-outline"),
+                }}
+            />
+
+            <Tabs.Screen
+                name="wallet"
+                options={{
+                    title: "Carteira",
+                    tabBarIcon: createTabBarIcon("wallet-outline"),
                 }}
             />
 
             <Tabs.Screen
                 name="settings"
                 options={{
-                    title: "Conta",
+                    title: "Config.",
                     tabBarIcon: createTabBarIcon("settings-outline"),
                 }}
             />
