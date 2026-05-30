@@ -140,6 +140,11 @@ export function useOrderFlow(storeId?: string | null) {
             return null;
         }
 
+        if (user.storeId && storeId === user.storeId) {
+            setMessage("Você não pode comprar da própria loja.");
+            return null;
+        }
+
         const deviceId = await getOrCreateDeviceId();
         const localOrderId = randomUUID();
         const createdAt = new Date().toISOString();
@@ -159,7 +164,7 @@ export function useOrderFlow(storeId?: string | null) {
             version: 1,
             localOrderId,
             storeId,
-            customerId: user.role === "CUSTOMER" ? user.id : null,
+            customerId: user.id,
             deviceId,
             createdAt,
             totalAmount: qrTotalAmount,

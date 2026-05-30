@@ -1,37 +1,64 @@
 import { useCallback, useState } from "react";
 
-import { deposit, getMyPaymentTransactions, getMyWallet, getMyWalletTransactions } from "@/src/domains/payment/services/payment-service";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { deposit, getMyPaymentTransactions, getMyPersonalWallet, getMyPersonalWalletTransactions, getMyWallet, getMyWalletTransactions, settleWallet } from "@/src/domains/payment/services/payment-service";
 import { DepositRequest, PaymentTransactionResponse, WalletResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
 
 type UseWalletState = {
-    wallet: WalletResponse | null;
-    walletTransactions: WalletTransactionResponse[];
+    storeWallet: WalletResponse | null;
+    personalWallet: WalletResponse | null;
+    storeWalletTransactions: WalletTransactionResponse[];
+    personalWalletTransactions: WalletTransactionResponse[];
     paymentTransactions: PaymentTransactionResponse[];
     loading: boolean;
     refreshing: boolean;
     depositing: boolean;
+    settling: boolean;
     error: string;
     loadWalletData: () => Promise<void>;
     refreshWalletData: () => Promise<void>;
     depositFake: (body: DepositRequest) => Promise<void>;
+    settlePendingBalance: () => Promise<void>;
 };
 
 export function useWallet(): UseWalletState {
-    const [wallet, setWallet] = useState<WalletResponse | null>(null);
-    const [walletTransactions, setWalletTransactions] = useState<WalletTransactionResponse[]>([]);
+    const { user } = useAuth();
+    const isSeller = user?.role === "SELLER";
+
+    const [storeWallet, setStoreWallet] = useState<WalletResponse | null>(null);
+    const [personalWallet, setPersonalWallet] = useState<WalletResponse | null>(null);
+    const [storeWalletTransactions, setStoreWalletTransactions] = useState<WalletTransactionResponse[]>([]);
+    const [personalWalletTransactions, setPersonalWalletTransactions] = useState<WalletTransactionResponse[]>([]);
     const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransactionResponse[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [depositing, setDepositing] = useState(false);
+    const [settling, setSettling] = useState(false);
     const [error, setError] = useState("");
 
     const fetchAll = useCallback(async () => {
-        const [walletData, walletTxs, paymentTxs] = await Promise.all([getMyWallet(), getMyWalletTransactions(), getMyPaymentTransactions()]);
+        const [defaultWallet, defaultWalletTxs, paymentTxs, fetchedPersonalWallet, fetchedPersonalWalletTxs] = await Promise.all([
+            getMyWallet(),
+            getMyWalletTransactions(),
+            getMyPaymentTransactions(),
+            isSeller ? getMyPersonalWallet() : Promise.resolve(null),
+            isSeller ? getMyPersonalWalletTransactions() : Promise.resolve<WalletTransactionResponse[]>([]),
+        ]);
 
-        setWallet(walletData);
-        setWalletTransactions(walletTxs);
+        if (isSeller) {
+            setStoreWallet(defaultWallet);
+            setStoreWalletTransactions(defaultWalletTxs);
+            setPersonalWallet(fetchedPersonalWallet);
+            setPersonalWalletTransactions(fetchedPersonalWalletTxs);
+        } else {
+            setStoreWallet(null);
+            setStoreWalletTransactions([]);
+            setPersonalWallet(defaultWallet);
+            setPersonalWalletTransactions(defaultWalletTxs);
+        }
+
         setPaymentTransactions(paymentTxs);
-    }, []);
+    }, [isSeller]);
 
     const loadWalletData = useCallback(async () => {
         try {
@@ -39,7 +66,7 @@ export function useWallet(): UseWalletState {
             setError("");
             await fetchAll();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Nao foi possivel carregar a carteira.");
+            setError(err instanceof Error ? err.message : "Não foi possível carregar a carteira.");
         } finally {
             setLoading(false);
         }
@@ -51,7 +78,7 @@ export function useWallet(): UseWalletState {
             setError("");
             await fetchAll();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Nao foi possivel atualizar a carteira.");
+            setError(err instanceof Error ? err.message : "Não foi possível atualizar a carteira.");
         } finally {
             setRefreshing(false);
         }
@@ -63,28 +90,50 @@ export function useWallet(): UseWalletState {
                 setDepositing(true);
                 setError("");
                 const updatedWallet = await deposit(body);
-                setWallet(updatedWallet);
+                if (isSeller) {
+                    setPersonalWallet(updatedWallet);
+                } else {
+                    setPersonalWallet(updatedWallet);
+                }
                 await fetchAll();
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Nao foi possivel adicionar saldo.");
+                setError(err instanceof Error ? err.message : "Não foi possível adicionar saldo.");
                 throw err;
             } finally {
                 setDepositing(false);
             }
         },
-        [fetchAll],
+        [fetchAll, isSeller],
     );
 
+    const settlePendingBalance = useCallback(async () => {
+        try {
+            setSettling(true);
+            setError("");
+            await settleWallet();
+            await fetchAll();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Não foi possível liberar o saldo pendente.");
+            throw err;
+        } finally {
+            setSettling(false);
+        }
+    }, [fetchAll]);
+
     return {
-        wallet,
-        walletTransactions,
+        storeWallet,
+        personalWallet,
+        storeWalletTransactions,
+        personalWalletTransactions,
         paymentTransactions,
         loading,
         refreshing,
         depositing,
+        settling,
         error,
         loadWalletData,
         refreshWalletData,
         depositFake,
+        settlePendingBalance,
     };
 }

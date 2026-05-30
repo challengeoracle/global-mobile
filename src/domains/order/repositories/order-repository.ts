@@ -128,6 +128,37 @@ export async function getLocalOrderByRemoteId(remoteOrderId: string) {
     );
 }
 
+export async function getLocalOrderById(orderId: string) {
+    return db.getFirstAsync<LocalOrderRow>(
+        `
+        SELECT
+            id,
+            remote_order_id,
+            local_order_id,
+            store_id,
+            customer_id,
+            seller_id,
+            device_id,
+            order_status,
+            payment_status,
+            sync_status,
+            total_amount,
+            created_at,
+            offline_created_at,
+            synced_at
+        FROM orders
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [orderId],
+    );
+}
+
+export async function getLocalOrderByAnyId(orderId: string) {
+    const [byId, byLocalId, byRemoteId] = await Promise.all([getLocalOrderById(orderId), getLocalOrderByLocalId(orderId), getLocalOrderByRemoteId(orderId)]);
+    return byId ?? byLocalId ?? byRemoteId ?? null;
+}
+
 async function createOrderItem(params: { orderId: string; productId: string; productName: string; unitPrice: number; quantity: number }) {
     const totalPrice = params.unitPrice * params.quantity;
 

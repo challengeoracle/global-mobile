@@ -67,7 +67,7 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="home"
                 options={{
-                    title: "Inicio",
+                    title: "Início",
                     tabBarIcon: createTabBarIcon("home-outline"),
                 }}
             />
@@ -82,7 +82,7 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="catalog"
                 options={{
-                    title: "Catalogo",
+                    title: "Catálogo",
                     tabBarIcon: createTabBarIcon("book-outline"),
                 }}
             />
@@ -106,7 +106,7 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="settings"
                 options={{
-                    title: "Config.",
+                    title: "Configurações",
                     tabBarIcon: createTabBarIcon("settings-outline"),
                 }}
             />

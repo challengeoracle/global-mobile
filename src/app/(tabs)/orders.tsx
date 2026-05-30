@@ -1,81 +1,38 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useColorScheme } from "nativewind";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
-import { OrderConfirmationQrModal } from "@/src/domains/order/components/order-confirmation-qr-modal";
-import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow, saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
-import { getMyOrders } from "@/src/domains/order/services/order-service";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
-import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
-import { PaymentTransactionModal } from "@/src/domains/payment/components/payment-transaction-modal";
-import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
-import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment";
+import { getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderRow, saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
+import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
+import { getMyOrders } from "@/src/domains/order/services/order-service";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 
-function money(value: number) {
-    return value.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-    });
-}
-
-function syncStatusLabel(value: string) {
-    if (value === "PENDING") return "Aguardando envio";
-    if (value === "SYNCED") return "Concluido";
-    if (value === "OFFLINE_SYNCED") return "Concluido";
-    if (value === "SELLER_CONFIRMED") return "Confirmado";
-    if (value === "REJECTED") return "Rejeitado";
-    return value;
+function wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function queueIssueMessage(syncStatus: string, queueStatus?: string, lastError?: string | null) {
     if (syncStatus === "REJECTED") {
-        return lastError ?? "Nao foi possivel concluir este pedido.";
+        return lastError ?? "Não foi possível concluir este pedido.";
     }
 
     if (queueStatus === "FAILED") {
-        return lastError ?? "Houve uma falha temporaria. Tente novamente em instantes.";
+        return lastError ?? "Houve uma falha temporária. Tente novamente em instantes.";
     }
 
     return "";
 }
 
-function paymentLabel(value: string) {
-    if (value === "PENDING_PAYMENT") return "PENDING";
-    if (value === "PAID") return "PAID";
-    if (value === "REJECTED") return "REJECTED";
-    return value;
-}
-
-function orderStatusLabel(value: string) {
-    if (value === "CREATED") return "Criado";
-    if (value === "CONFIRMED") return "Confirmado";
-    if (value === "CANCELLED") return "Cancelado";
-    return value;
-}
-
-function syncStatusClass(value: string) {
-    if (value === "REJECTED") return "bg-red-500/10 text-red-500";
-    if (value === "PENDING") return "bg-yellow-500/10 text-yellow-600";
-    if (value === "SELLER_CONFIRMED") return "bg-blue-500/10 text-blue-500";
-    return "bg-primary/10 text-primary";
-}
-
-function paymentClass(value: string) {
-    if (value === "REJECTED") return "bg-red-500/10 text-red-500";
-    if (value === "PAID") return "bg-primary/10 text-primary";
-    return "bg-yellow-500/10 text-yellow-600";
-}
-
-function dateLabel(order: LocalOrderRow) {
-    const rawDate = order.offline_created_at ?? order.created_at;
-    return new Date(rawDate).toLocaleString("pt-BR");
+function getPrimaryOrderDate(order: LocalOrderRow) {
+    return order.offline_created_at ?? order.created_at;
 }
 
 export default function OrdersScreen() {
@@ -90,19 +47,8 @@ export default function OrdersScreen() {
     const orderSyncStatus = useSyncStatus("orders");
 
     const [orders, setOrders] = useState<LocalOrderRow[]>([]);
-    const [selectedOrder, setSelectedOrder] = useState<LocalOrderRow | null>(null);
-    const [items, setItems] = useState<LocalOrderItemRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState("");
-    const [selectedOrderError, setSelectedOrderError] = useState<string>("");
-    const [selectedOrderQueueStatus, setSelectedOrderQueueStatus] = useState<string>("");
-    const [confirmationQrVisible, setConfirmationQrVisible] = useState(false);
-    const [confirmationQrValue, setConfirmationQrValue] = useState<string | null>(null);
-    const [confirmationQrMessage, setConfirmationQrMessage] = useState<string | null>(null);
-    const [confirmationQrSynced, setConfirmationQrSynced] = useState(false);
-    const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-    const [paymentTransaction, setPaymentTransaction] = useState<PaymentTransactionResponse | null>(null);
-    const [paymentLoading, setPaymentLoading] = useState(false);
 
     const totals = useMemo(() => {
         return orders.reduce(
@@ -120,43 +66,41 @@ export default function OrdersScreen() {
         );
     }, [orders]);
 
-    async function loadSelectedOrderState(order: LocalOrderRow | null) {
-        setSelectedOrder(order);
+    async function loadLocalOrders() {
+        const localOrders = await getLocalOrders();
+        setOrders(localOrders);
+        return localOrders;
+    }
 
-        if (!order) {
-            setItems([]);
-            setSelectedOrderError("");
-            setSelectedOrderQueueStatus("");
+    async function refreshOrdersFromBackend(options?: { delayedRetry?: boolean; silent?: boolean }) {
+        if (!network.isConnected) {
             return;
         }
 
-        const [orderItems, syncIssue] = await Promise.all([getLocalOrderItems(order.id), getOrderSyncIssue(order.local_order_id)]);
-        setItems(orderItems);
-        setSelectedOrderQueueStatus(syncIssue?.queueStatus ?? "");
-        setSelectedOrderError(queueIssueMessage(order.sync_status, syncIssue?.queueStatus, syncIssue?.lastError));
+        try {
+            const remoteOrders = await getMyOrders();
+            await saveRemoteOrders(remoteOrders);
+            await loadLocalOrders();
+
+            if (options?.delayedRetry) {
+                await wait(1800);
+                const refreshedOrders = await getMyOrders();
+                await saveRemoteOrders(refreshedOrders);
+                await loadLocalOrders();
+            }
+        } catch (err) {
+            if (!options?.silent) {
+                setMessage(err instanceof Error ? err.message : "Não foi possível atualizar os pedidos agora.");
+            }
+        }
     }
 
     async function loadOrders() {
         try {
             setLoading(true);
             setMessage("");
-
-            if (network.isConnected) {
-                try {
-                    const remoteOrders = await getMyOrders();
-                    await saveRemoteOrders(remoteOrders);
-                } catch (err) {
-                    setMessage(err instanceof Error ? err.message : "Nao foi possivel atualizar os pedidos agora.");
-                }
-            }
-
-            const localOrders = await getLocalOrders();
-            setOrders(localOrders);
-
-            if (selectedOrder) {
-                const updatedSelected = localOrders.find((order) => order.id === selectedOrder.id) ?? null;
-                await loadSelectedOrderState(updatedSelected);
-            }
+            await loadLocalOrders();
+            await refreshOrdersFromBackend({ silent: false });
         } catch (err) {
             setMessage(err instanceof Error ? err.message : "Erro ao carregar pedidos.");
         } finally {
@@ -164,68 +108,11 @@ export default function OrdersScreen() {
         }
     }
 
-    async function openOrder(order: LocalOrderRow) {
-        await loadSelectedOrderState(order);
-    }
-
-    async function closeOrder() {
-        await loadSelectedOrderState(null);
-    }
-
     async function handleSync() {
         const result = await ordersFlow.syncPendingOrders(false);
         setMessage(result.message);
-        await loadOrders();
-    }
-
-    async function handleOpenConfirmationQr(order: LocalOrderRow) {
-        const confirmation = await buildOrderConfirmationPayloadFromLocal(order.local_order_id);
-
-        if (!confirmation.storeId) {
-            setMessage("Este pedido nao tem dados suficientes para gerar o QR.");
-            return;
-        }
-
-        const payload = buildOrderConfirmationQrPayload({
-            type: "OFFPAY_ORDER_CONFIRMATION",
-            version: 1,
-            localOrderId: confirmation.localOrderId,
-            storeId: confirmation.storeId,
-            customerId: confirmation.customerId,
-            sellerId: confirmation.sellerId,
-            sellerDeviceId: confirmation.sellerDeviceId,
-            remoteOrderId: confirmation.remoteOrderId,
-            confirmedAt: confirmation.confirmedAt,
-            totalAmount: confirmation.totalAmount,
-            orderStatus: confirmation.orderStatus,
-            paymentStatus: confirmation.paymentStatus,
-            syncStatus: confirmation.syncStatus,
-            message: confirmation.message,
-            items: confirmation.items,
-        });
-
-        setConfirmationQrValue(encodeOrderQr(payload));
-        setConfirmationQrMessage(confirmation.message ?? null);
-        setConfirmationQrSynced(confirmation.syncStatus === "SYNCED" || confirmation.syncStatus === "OFFLINE_SYNCED");
-        setConfirmationQrVisible(true);
-    }
-
-    async function handleViewPayment(order: LocalOrderRow) {
-        if (!order.remote_order_id) {
-            setMessage("Este pedido ainda nao possui ID remoto para consultar o pagamento.");
-            return;
-        }
-
-        try {
-            setPaymentLoading(true);
-            const transaction = await getPaymentTransactionByOrderId(order.remote_order_id);
-            setPaymentTransaction(transaction);
-            setPaymentModalVisible(true);
-        } catch (err) {
-            setMessage(err instanceof Error ? err.message : "Nao foi possivel consultar o pagamento.");
-        } finally {
-            setPaymentLoading(false);
-        }
+        await loadLocalOrders();
+        await refreshOrdersFromBackend({ delayedRetry: true, silent: false });
     }
 
     useFocusEffect(
@@ -248,7 +135,7 @@ export default function OrdersScreen() {
         <View className="flex-1 bg-background">
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="px-6 pb-10 pt-14">
-                    <PageHeader eyebrow="Pedidos" title={isSeller ? "Vendas da loja" : "Meus pedidos"} />
+                    <PageHeader eyebrow="Pedidos" title={isSeller ? "Recibos da loja" : "Meus recibos"} description="Veja rapidamente loja, horário, valor total, pagamento e sincronização de cada compra." />
 
                     <SyncStatusCard
                         variant="contextual"
@@ -264,136 +151,113 @@ export default function OrdersScreen() {
                         syncingNow={orderSyncStatus.syncingNow}
                     />
 
-                    <View className="mb-5 rounded-3xl border border-border bg-card p-4">
+                    <View className="mb-5 rounded-[28px] border border-border bg-card p-5">
                         <View className="flex-row items-start justify-between gap-4">
                             <View className="flex-1">
-                                <Text className="text-sm font-bold text-muted-foreground">{isSeller ? "Total de vendas" : "Total dos pedidos"}</Text>
-                                <Text className="mt-1 text-3xl font-black text-card-foreground">{money(totals.total)}</Text>
-                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} pedido(s) no historico.</Text>
+                                <Text className="text-sm font-bold text-muted-foreground">{isSeller ? "Total recebido em pedidos" : "Total em compras"}</Text>
+                                <Text className="mt-2 text-3xl font-black text-card-foreground">{formatCurrency(totals.total)}</Text>
+                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} recibo(s) disponíveis no histórico.</Text>
                             </View>
 
                             {isSeller ? (
                                 <Pressable onPress={handleSync} disabled={!network.isConnected || totals.pending === 0 || ordersFlow.syncing} className="h-12 flex-row items-center gap-2 rounded-2xl bg-primary px-4 disabled:opacity-50">
                                     {ordersFlow.syncing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />}
-                                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Atualizar</Text>
+                                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Sincronizar</Text>
                                 </Pressable>
                             ) : null}
                         </View>
 
                         <View className="mt-4 flex-row flex-wrap gap-2">
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.pending} aguardando</Text>
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.confirmed} confirmado(s)</Text>
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.synced} concluido(s)</Text>
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.rejected} com problema</Text>
+                            <SummaryPill label={`${totals.pending} pendente(s)`} />
+                            <SummaryPill label={`${totals.confirmed} confirmado(s)`} />
+                            <SummaryPill label={`${totals.synced} sincronizado(s)`} />
+                            <SummaryPill label={`${totals.rejected} com problema`} />
                         </View>
 
-                        {!isSeller ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Os pedidos aparecem aqui assim que o vendedor confirmar a compra.</Text> : null}
-                        {isSeller && !network.isConnected ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Sem internet no momento. Assim que a conexao voltar, voce pode atualizar os pedidos.</Text> : null}
                         {ordersFlow.message || message ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{ordersFlow.message || message}</Text> : null}
                     </View>
 
-                    <View className="gap-3">
+                    <View className="gap-4">
                         {orders.length > 0 ? (
-                            orders.map((order) => (
-                                <Pressable key={order.id} onPress={() => openOrder(order)} className="rounded-3xl border border-border bg-card p-4">
-                                    <View className="flex-row items-start justify-between gap-3">
-                                        <View className="flex-1">
-                                            <Text className="text-base font-black text-card-foreground">Pedido #{order.local_order_id.slice(0, 8)}</Text>
-                                            <Text className="mt-1 text-sm text-muted-foreground">{dateLabel(order)}</Text>
-                                        </View>
-
-                                        <Text className="text-base font-black text-card-foreground">{money(order.total_amount)}</Text>
-                                    </View>
-
-                                    <View className="mt-4 flex-row flex-wrap gap-2">
-                                        <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${syncStatusClass(order.sync_status)}`}>Sync {syncStatusLabel(order.sync_status)}</Text>
-                                        <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${paymentClass(order.payment_status)}`}>Pagamento {paymentLabel(order.payment_status)}</Text>
-                                        <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">Pedido {orderStatusLabel(order.order_status)}</Text>
-                                    </View>
-
-                                    {order.sync_status === "REJECTED" ? <Text className="mt-3 text-sm font-bold text-red-500">Toque para ver o que precisa ser ajustado.</Text> : null}
-                                </Pressable>
-                            ))
+                            orders.map((order) => <ReceiptCard key={order.id} order={order} />)
                         ) : (
                             <View className="rounded-3xl border border-dashed border-border bg-card p-6">
                                 <Text className="text-center text-base font-bold text-card-foreground">Nenhum pedido ainda</Text>
-                                <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">{isSeller ? "Quando voce confirmar uma compra, ela aparecera aqui." : "Seus pedidos confirmados aparecerao aqui."}</Text>
+                                <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">{isSeller ? "Quando você confirmar uma compra, o recibo aparecerá aqui." : "Seus pedidos confirmados aparecerão aqui em formato de recibo."}</Text>
                             </View>
                         )}
                     </View>
-
-                    {selectedOrder ? (
-                        <View className="mt-6 rounded-3xl border border-border bg-card p-4">
-                            <View className="mb-4 flex-row items-center justify-between">
-                                <View>
-                                    <Text className="text-lg font-black text-card-foreground">Detalhes do pedido</Text>
-                                    <Text className="mt-1 text-xs font-bold text-muted-foreground">#{selectedOrder.local_order_id}</Text>
-                                </View>
-
-                                <Pressable onPress={closeOrder} className="h-11 w-11 items-center justify-center rounded-2xl bg-muted">
-                                    <Ionicons name="close" size={20} color={iconColor} />
-                                </Pressable>
-                            </View>
-
-                            <View className="rounded-2xl bg-muted p-4">
-                                <View className="flex-row items-center justify-between">
-                                    <Text className="text-sm font-bold text-muted-foreground">Total</Text>
-                                    <Text className="text-xl font-black text-card-foreground">{money(selectedOrder.total_amount)}</Text>
-                                </View>
-
-                                <View className="mt-4 gap-2">
-                                    <Text className="text-sm text-muted-foreground">Criado em: {selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString("pt-BR") : "-"}</Text>
-                                    <Text className="text-sm text-muted-foreground">Offline em: {selectedOrder.offline_created_at ? new Date(selectedOrder.offline_created_at).toLocaleString("pt-BR") : "-"}</Text>
-                                </View>
-
-                                <View className="mt-3 flex-row flex-wrap gap-2">
-                                    <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${syncStatusClass(selectedOrder.sync_status)}`}>Sync {syncStatusLabel(selectedOrder.sync_status)}</Text>
-                                    <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${paymentClass(selectedOrder.payment_status)}`}>Pagamento {paymentLabel(selectedOrder.payment_status)}</Text>
-                                    <Text className="rounded-xl bg-card px-3 py-2 text-xs font-bold text-card-foreground">Pedido {orderStatusLabel(selectedOrder.order_status)}</Text>
-                                </View>
-                            </View>
-
-                            {selectedOrderError ? <Text className={`mt-4 rounded-2xl px-4 py-3 text-sm font-bold ${selectedOrderQueueStatus === "FAILED" ? "bg-yellow-500/10 text-yellow-600" : "bg-red-500/10 text-red-500"}`}>{selectedOrderError}</Text> : null}
-
-                            <View className="mt-4 gap-3">
-                                {selectedOrder.remote_order_id ? (
-                                    <Pressable onPress={() => handleViewPayment(selectedOrder)} disabled={paymentLoading} className="h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-card disabled:opacity-60">
-                                        {paymentLoading ? <ActivityIndicator color={iconColor} /> : <Ionicons name="card-outline" size={18} color={iconColor} />}
-                                        <Text className="text-sm font-black uppercase tracking-[1px] text-card-foreground">Ver pagamento</Text>
-                                    </Pressable>
-                                ) : null}
-
-                                {isSeller ? (
-                                    <Pressable onPress={() => handleOpenConfirmationQr(selectedOrder)} className="h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-card">
-                                        <Ionicons name="qr-code-outline" size={18} color={iconColor} />
-                                        <Text className="text-sm font-black uppercase tracking-[1px] text-card-foreground">Mostrar QR ao cliente</Text>
-                                    </Pressable>
-                                ) : null}
-                            </View>
-
-                            <View className="mt-4 gap-3">
-                                {items.map((item) => (
-                                    <View key={item.id} className="rounded-2xl border border-border bg-card p-3">
-                                        <View className="flex-row justify-between gap-3">
-                                            <View className="flex-1">
-                                                <Text className="text-sm font-black text-card-foreground">{item.product_name}</Text>
-                                                <Text className="mt-1 text-xs text-muted-foreground">
-                                                    {item.quantity}x {money(item.unit_price)}
-                                                </Text>
-                                            </View>
-
-                                            <Text className="text-sm font-black text-card-foreground">{money(item.total_price)}</Text>
-                                        </View>
-                                    </View>
-                                ))}
-                            </View>
-                        </View>
-                    ) : null}
                 </View>
             </ScrollView>
-
-            <OrderConfirmationQrModal visible={confirmationQrVisible} qrValue={confirmationQrValue} synced={confirmationQrSynced} message={confirmationQrMessage} onClose={() => setConfirmationQrVisible(false)} />
-            <PaymentTransactionModal visible={paymentModalVisible} transaction={paymentTransaction} onClose={() => setPaymentModalVisible(false)} />
         </View>
     );
+}
+
+function ReceiptCard({ order }: { order: LocalOrderRow }) {
+    const [itemCount, setItemCount] = useState<number | null>(null);
+    const [syncIssue, setSyncIssue] = useState("");
+
+    useFocusEffect(
+        useCallback(() => {
+            let active = true;
+
+            (async () => {
+                const [items, issue] = await Promise.all([getLocalOrderItems(order.id), getOrderSyncIssue(order.local_order_id)]);
+
+                if (!active) {
+                    return;
+                }
+
+                setItemCount(items.reduce((total, item) => total + item.quantity, 0));
+                setSyncIssue(queueIssueMessage(order.sync_status, issue?.queueStatus, issue?.lastError));
+            })();
+
+            return () => {
+                active = false;
+            };
+        }, [order.id, order.local_order_id, order.sync_status]),
+    );
+
+    return (
+        <Pressable onPress={() => router.push({ pathname: "/orders/[orderId]", params: { orderId: order.id } })} className="overflow-hidden rounded-[30px] border border-border bg-card active:opacity-90">
+            <View className="border-b border-dashed border-border/80 px-5 py-4">
+                <View className="flex-row items-start justify-between gap-3">
+                    <View className="flex-1">
+                        <Text className="text-xs font-black uppercase tracking-[2px] text-muted-foreground">Recibo</Text>
+                        <Text className="mt-2 text-xl font-black text-card-foreground">{formatStoreLabel(order.store_id)}</Text>
+                        <Text className="mt-1 text-sm text-muted-foreground">{formatDateTime(getPrimaryOrderDate(order))}</Text>
+                    </View>
+
+                    <View className="items-end">
+                        <Text className="text-xs font-bold uppercase tracking-[1px] text-muted-foreground">Total</Text>
+                        <Text className="mt-1 text-2xl font-black text-card-foreground">{formatCurrency(order.total_amount)}</Text>
+                    </View>
+                </View>
+            </View>
+
+            <View className="gap-4 px-5 py-4">
+                <View className="flex-row flex-wrap gap-2">
+                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${orderStatusTone(order.order_status)}`}>{formatOrderStatus(order.order_status)}</Text>
+                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${paymentStatusTone(order.payment_status)}`}>{formatPaymentStatus(order.payment_status)}</Text>
+                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${syncStatusTone(order.sync_status)}`}>{formatSyncStatus(order.sync_status)}</Text>
+                </View>
+
+                <View className="flex-row items-center justify-between">
+                    <Text className="text-sm text-muted-foreground">{itemCount === null ? "Carregando itens..." : `${itemCount} item(ns)`}</Text>
+                    <Text className="text-sm text-muted-foreground">{order.offline_created_at ? "Compra criada offline" : "Compra criada online"}</Text>
+                </View>
+
+                {syncIssue ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{syncIssue}</Text> : null}
+
+                <View className="flex-row items-center justify-between border-t border-dashed border-border/80 pt-4">
+                    <Text className="text-sm font-medium text-muted-foreground">Ver detalhes</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#71717a" />
+                </View>
+            </View>
+        </Pressable>
+    );
+}
+
+function SummaryPill({ label }: { label: string }) {
+    return <Text className="rounded-full bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{label}</Text>;
 }

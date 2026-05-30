@@ -1,6 +1,6 @@
 export type WalletOwnerType = "CUSTOMER" | "STORE";
 
-export type WalletTransactionType = "DEPOSIT" | "PAYMENT_DEBIT" | "PAYMENT_CREDIT";
+export type WalletTransactionType = "DEPOSIT" | "PAYMENT_DEBIT" | "PAYMENT_CREDIT" | "SETTLEMENT";
 
 export type PaymentTransactionStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -42,4 +42,9 @@ export type PaymentTransactionResponse = {
 export type DepositRequest = {
     amount: number;
     description?: string;
+};
+
+export type WalletSettleResponse = {
+    message?: string;
+    wallet?: WalletResponse;
 };

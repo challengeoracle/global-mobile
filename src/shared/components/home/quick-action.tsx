@@ -9,11 +9,12 @@ type QuickActionProps = {
     icon: keyof typeof Ionicons.glyphMap;
     title: string;
     description: string;
+    onPress?: () => void;
 };
 
-export function QuickAction({ icon, title, description }: QuickActionProps) {
+export function QuickAction({ icon, title, description, onPress }: QuickActionProps) {
     return (
-        <Pressable className="rounded-2xl border border-border bg-background p-4 active:opacity-90">
+        <Pressable onPress={onPress} className="rounded-2xl border border-border bg-background p-4 active:opacity-90">
             <View className="flex-row items-center gap-3">
                 <View className="h-11 w-11 items-center justify-center rounded-2xl bg-muted">
                     <Ionicons name={icon} size={20} color={COLOR_RED} />

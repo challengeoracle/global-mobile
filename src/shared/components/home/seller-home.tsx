@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { Text, View } from "react-native";
 
 import { PageHeader } from "@/src/shared/components/ui/page-header";
@@ -26,11 +27,11 @@ export function SellerHome({ user, networkInfo }: SellerHomeProps) {
                 <Text className="mb-4 text-lg font-black text-card-foreground">Ações do vendedor</Text>
 
                 <View className="gap-3">
-                    <QuickAction icon="cart-outline" title="Registrar venda" description="Criar venda no terminal." />
+                    <QuickAction icon="cart-outline" title="Registrar venda" description="Criar venda no terminal." onPress={() => router.push("/(tabs)/catalog")} />
 
-                    <QuickAction icon="swap-horizontal-outline" title="Sincronizar vendas" description="Enviar vendas pendentes." />
+                    <QuickAction icon="bag-handle-outline" title="Comprar em outra loja" description="Escanear catálogo externo e montar um pedido." onPress={() => router.push("/seller-buy")} />
 
-                    <QuickAction icon="wallet-outline" title="Carteira" description="Ver saldo e recebimentos." />
+                    <QuickAction icon="wallet-outline" title="Carteira" description="Ver saldo e recebimentos." onPress={() => router.push("/(tabs)/wallet")} />
                 </View>
             </View>
         </>
