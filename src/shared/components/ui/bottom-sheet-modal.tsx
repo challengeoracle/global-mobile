@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, Modal, PanResponder, Pressable, Text, View } from "react-native";
+import { Animated, Dimensions, Easing, Modal, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 
 type BottomSheetModalProps = {
     visible: boolean;
@@ -9,36 +9,40 @@ type BottomSheetModalProps = {
     children: ReactNode;
     onClose: () => void;
     maxHeightClassName?: string;
+    scrollContent?: boolean;
 };
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
-export function BottomSheetModal({ visible, title, eyebrow, children, onClose, maxHeightClassName = "max-h-[88%]" }: BottomSheetModalProps) {
+export function BottomSheetModal({ visible, title, eyebrow, children, onClose, maxHeightClassName = "max-h-[94%]", scrollContent = true }: BottomSheetModalProps) {
     const [mounted, setMounted] = useState(visible);
 
     const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-    const closeAnimated = useCallback((notifyOnClose = true) => {
-        Animated.parallel([
-            Animated.timing(backdropOpacity, {
-                toValue: 0,
-                duration: 180,
-                useNativeDriver: true,
-            }),
-            Animated.timing(translateY, {
-                toValue: SCREEN_HEIGHT,
-                duration: 200,
-                easing: Easing.in(Easing.quad),
-                useNativeDriver: true,
-            }),
-        ]).start(() => {
-            setMounted(false);
-            if (notifyOnClose) {
-                onClose();
-            }
-        });
-    }, [backdropOpacity, translateY, onClose]);
+    const closeAnimated = useCallback(
+        (notifyOnClose = true) => {
+            Animated.parallel([
+                Animated.timing(backdropOpacity, {
+                    toValue: 0,
+                    duration: 180,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(translateY, {
+                    toValue: SCREEN_HEIGHT,
+                    duration: 200,
+                    easing: Easing.in(Easing.quad),
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setMounted(false);
+                if (notifyOnClose) {
+                    onClose();
+                }
+            });
+        },
+        [backdropOpacity, translateY, onClose],
+    );
 
     useEffect(() => {
         if (visible) {
@@ -94,6 +98,8 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
 
     if (!mounted) return null;
 
+    const body = scrollContent ? <ScrollView showsVerticalScrollIndicator={false} className="flex-1">{children}</ScrollView> : <View className="flex-1">{children}</View>;
+
     return (
         <Modal visible={mounted} transparent animationType="none" onRequestClose={closeAnimated}>
             <View className="flex-1 justify-end">
@@ -101,15 +107,14 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
                     <Pressable className="flex-1" onPress={closeAnimated} />
                 </Animated.View>
 
-                <Animated.View style={{ transform: [{ translateY }] }} className={`${maxHeightClassName} rounded-t-[32px] border-x border-t border-border bg-background px-6 pb-8 pt-4`}>
+                <Animated.View style={{ transform: [{ translateY }] }} className={`${maxHeightClassName} h-[94%] rounded-t-[32px] border-x border-t border-border bg-background px-6 pb-6 pt-4`}>
                     <View {...panResponder.panHandlers} className="mb-4 items-center">
                         <View className="h-1.5 w-12 rounded-full bg-muted-foreground/30" />
                     </View>
 
-                    <View className="mb-6 flex-row items-center justify-between gap-4">
+                    <View className="mb-5 flex-row items-start justify-between gap-4">
                         <View className="flex-1">
                             {eyebrow ? <Text className="text-sm font-bold uppercase tracking-[3px] text-primary">{eyebrow}</Text> : null}
-
                             <Text className="mt-2 text-3xl font-black tracking-[-1px] text-foreground">{title}</Text>
                         </View>
 
@@ -118,9 +123,7 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
                         </Pressable>
                     </View>
 
-                    {children}
-
-                    <View className="absolute -bottom-64 left-0 right-0 h-64 border-x border-border bg-background" />
+                    {body}
                 </Animated.View>
             </View>
         </Modal>

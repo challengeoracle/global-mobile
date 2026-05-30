@@ -248,7 +248,25 @@ export default function CatalogScreen() {
                     }}
                 />
 
-                <CustomerCatalogModal visible={activeModal === "customerCatalog"} products={catalog.products} cartCount={orders.itemCount} onClose={closeActiveModal} onProductPress={(product) => transitionToModal("productDetails", () => catalog.openProduct(product))} onOpenCart={() => transitionToModal("cart")} />
+                <CustomerCatalogModal
+                    visible={activeModal === "customerCatalog"}
+                    products={catalog.products}
+                    categories={catalog.categories}
+                    cartCount={orders.itemCount}
+                    selectedCategoryId={catalog.selectedCategoryId}
+                    search={catalog.search}
+                    nameSort={catalog.nameSort}
+                    priceSort={catalog.priceSort}
+                    stockSort={catalog.stockSort}
+                    onClose={closeActiveModal}
+                    onProductPress={(product) => transitionToModal("productDetails", () => catalog.openProduct(product))}
+                    onOpenCart={() => transitionToModal("cart")}
+                    onSearchChange={catalog.setSearch}
+                    onCategoryChange={catalog.setSelectedCategoryId}
+                    onNameSortChange={catalog.setNameSort}
+                    onPriceSortChange={catalog.setPriceSort}
+                    onStockSortChange={catalog.setStockSort}
+                />
 
                 <ProductDetailsModal
                     visible={activeModal === "productDetails"}
@@ -258,6 +276,7 @@ export default function CatalogScreen() {
                     onEdit={catalog.openEdit}
                     onAdjustStock={catalog.openStock}
                     onDeactivate={catalog.deactivateProduct}
+                    onBackToCatalog={reopenCustomerCatalog}
                     onAddToCart={(product) => {
                         orders.addToCart(product);
                         transitionToModal("customerCatalog");

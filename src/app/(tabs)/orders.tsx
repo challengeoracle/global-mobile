@@ -23,21 +23,21 @@ function money(value: number) {
 }
 
 function statusLabel(value: string) {
-    if (value === "PENDING") return "Aguardando sincronização";
-    if (value === "SYNCED") return "Sincronizado";
-    if (value === "OFFLINE_SYNCED") return "Sincronizado";
-    if (value === "SELLER_CONFIRMED") return "Confirmado offline";
+    if (value === "PENDING") return "Aguardando envio";
+    if (value === "SYNCED") return "Concluído";
+    if (value === "OFFLINE_SYNCED") return "Concluído";
+    if (value === "SELLER_CONFIRMED") return "Confirmado";
     if (value === "REJECTED") return "Rejeitado";
     return value;
 }
 
 function queueIssueMessage(syncStatus: string, queueStatus?: string, lastError?: string | null) {
     if (syncStatus === "REJECTED") {
-        return lastError ?? "O servidor rejeitou este pedido.";
+        return lastError ?? "Não foi possível concluir este pedido.";
     }
 
     if (queueStatus === "FAILED") {
-        return lastError ?? "Falha temporária. O app vai tentar sincronizar novamente.";
+        return lastError ?? "Houve uma falha temporária. Tente novamente em instantes.";
     }
 
     return "";
@@ -105,13 +105,7 @@ export default function OrdersScreen() {
 
                 return acc;
             },
-            {
-                total: 0,
-                pending: 0,
-                rejected: 0,
-                synced: 0,
-                confirmed: 0,
-            },
+            { total: 0, pending: 0, rejected: 0, synced: 0, confirmed: 0 },
         );
     }, [orders]);
 
@@ -141,7 +135,7 @@ export default function OrdersScreen() {
                     const remoteOrders = await getMyOrders();
                     await saveRemoteOrders(remoteOrders);
                 } catch (err) {
-                    setMessage(err instanceof Error ? err.message : "NÃ£o foi possÃ­vel atualizar o histÃ³rico remoto.");
+                    setMessage(err instanceof Error ? err.message : "Não foi possível atualizar os pedidos agora.");
                 }
             }
 
@@ -177,7 +171,7 @@ export default function OrdersScreen() {
         const confirmation = await buildOrderConfirmationPayloadFromLocal(order.local_order_id);
 
         if (!confirmation.storeId) {
-            setMessage("Pedido sem loja vinculada para gerar confirmação.");
+            setMessage("Este pedido não tem dados suficientes para gerar o QR.");
             return;
         }
 
@@ -225,18 +219,18 @@ export default function OrdersScreen() {
         <View className="flex-1 bg-background">
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="px-6 pb-10 pt-14">
-                    <PageHeader eyebrow="Pedidos" title={isSeller ? "Vendas da loja" : "Minhas compras"} />
+                    <PageHeader eyebrow="Pedidos" title={isSeller ? "Vendas da loja" : "Meus pedidos"} />
 
                     <SyncStatusCard
                         variant="contextual"
-                        title="Fila de pedidos"
+                        title="Andamento dos pedidos"
                         onlineLabel={orderSyncStatus.network.isConnected ? "Online" : "Offline"}
                         onlineColor={orderSyncStatus.network.color}
                         isConnected={orderSyncStatus.network.isConnected}
                         isSyncing={orderSyncStatus.isSyncing}
                         pendingCount={orderSyncStatus.pendingCount}
                         rejectedCount={orderSyncStatus.rejectedCount}
-                        pendingLabel="de pedidos"
+                        pendingLabel="pedido(s) aguardando envio"
                         lastError={orderSyncStatus.scopedLastError}
                         syncingNow={orderSyncStatus.syncingNow}
                     />
@@ -244,39 +238,28 @@ export default function OrdersScreen() {
                     <View className="mb-5 rounded-3xl border border-border bg-card p-4">
                         <View className="flex-row items-start justify-between gap-4">
                             <View className="flex-1">
-                                <Text className="text-sm font-bold text-muted-foreground">{isSeller ? "Total vendido localmente" : "Total em pedidos locais"}</Text>
-
+                                <Text className="text-sm font-bold text-muted-foreground">{isSeller ? "Total de vendas" : "Total dos pedidos"}</Text>
                                 <Text className="mt-1 text-3xl font-black text-card-foreground">{money(totals.total)}</Text>
-
-                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} pedido(s) no histórico combinado.</Text>
+                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} pedido(s) no histórico.</Text>
                             </View>
 
                             {isSeller ? (
-                                <Pressable onPress={handleSync} disabled={!network.isConnected || totals.pending === 0 || ordersFlow.syncing} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4 disabled:opacity-50">
+                                <Pressable onPress={handleSync} disabled={!network.isConnected || totals.pending === 0 || ordersFlow.syncing} className="h-12 flex-row items-center gap-2 rounded-2xl bg-primary px-4 disabled:opacity-50">
                                     {ordersFlow.syncing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="cloud-upload-outline" size={18} color="#ffffff" />}
-
-                                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Sync</Text>
+                                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Atualizar</Text>
                                 </Pressable>
-                            ) : (
-                                <View className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4">
-                                    <Ionicons name="shield-checkmark-outline" size={18} color={iconColor} />
-
-                                    <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Local</Text>
-                                </View>
-                            )}
+                            ) : null}
                         </View>
 
                         <View className="mt-4 flex-row flex-wrap gap-2">
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.pending} pendente(s)</Text>
+                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.pending} aguardando</Text>
                             <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.confirmed} confirmado(s)</Text>
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.synced} sincronizado(s)</Text>
-                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.rejected} rejeitado(s)</Text>
+                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.synced} concluído(s)</Text>
+                            <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{totals.rejected} com problema</Text>
                         </View>
 
-                        {!isSeller ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Cliente não sincroniza venda. O pedido aparece ou atualiza aqui quando você escaneia o QR do vendedor.</Text> : null}
-
-                        {isSeller && !network.isConnected ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Sem conexão. As vendas confirmadas ficam salvas neste aparelho até voltar a internet.</Text> : null}
-
+                        {!isSeller ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Os pedidos aparecem aqui assim que o vendedor confirmar a compra.</Text> : null}
+                        {isSeller && !network.isConnected ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">Sem internet no momento. Assim que a conexão voltar, você pode atualizar os pedidos.</Text> : null}
                         {ordersFlow.message || message ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{ordersFlow.message || message}</Text> : null}
                     </View>
 
@@ -287,7 +270,6 @@ export default function OrdersScreen() {
                                     <View className="flex-row items-start justify-between gap-3">
                                         <View className="flex-1">
                                             <Text className="text-base font-black text-card-foreground">Pedido #{order.local_order_id.slice(0, 8)}</Text>
-
                                             <Text className="mt-1 text-sm text-muted-foreground">{new Date(order.created_at).toLocaleString("pt-BR")}</Text>
                                         </View>
 
@@ -300,14 +282,13 @@ export default function OrdersScreen() {
                                         <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{orderStatusLabel(order.order_status)}</Text>
                                     </View>
 
-                                    {order.sync_status === "REJECTED" ? <Text className="mt-3 text-sm font-bold text-red-500">Toque para ver o motivo da rejeição.</Text> : null}
+                                    {order.sync_status === "REJECTED" ? <Text className="mt-3 text-sm font-bold text-red-500">Toque para ver o que precisa ser ajustado.</Text> : null}
                                 </Pressable>
                             ))
                         ) : (
                             <View className="rounded-3xl border border-dashed border-border bg-card p-6">
                                 <Text className="text-center text-base font-bold text-card-foreground">Nenhum pedido ainda</Text>
-
-                                <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">{isSeller ? "Os pedidos confirmados por QR aparecerão aqui." : "Os pedidos confirmados pelo vendedor aparecerão aqui."}</Text>
+                                <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">{isSeller ? "Quando você confirmar uma compra, ela aparecerá aqui." : "Seus pedidos confirmados aparecerão aqui."}</Text>
                             </View>
                         )}
                     </View>
@@ -317,19 +298,17 @@ export default function OrdersScreen() {
                             <View className="mb-4 flex-row items-center justify-between">
                                 <View>
                                     <Text className="text-lg font-black text-card-foreground">Detalhes do pedido</Text>
-
                                     <Text className="mt-1 text-xs font-bold text-muted-foreground">#{selectedOrder.local_order_id}</Text>
                                 </View>
 
-                                <Pressable onPress={closeOrder}>
-                                    <Ionicons name="close-circle" size={24} color={iconColor} />
+                                <Pressable onPress={closeOrder} className="h-11 w-11 items-center justify-center rounded-2xl bg-muted">
+                                    <Ionicons name="close" size={20} color={iconColor} />
                                 </Pressable>
                             </View>
 
                             <View className="rounded-2xl bg-muted p-4">
                                 <View className="flex-row items-center justify-between">
                                     <Text className="text-sm font-bold text-muted-foreground">Total</Text>
-
                                     <Text className="text-xl font-black text-card-foreground">{money(selectedOrder.total_amount)}</Text>
                                 </View>
 
@@ -340,9 +319,7 @@ export default function OrdersScreen() {
                                 </View>
                             </View>
 
-                            {selectedOrderError ? (
-                                <Text className={`mt-4 rounded-2xl px-4 py-3 text-sm font-bold ${selectedOrderQueueStatus === "FAILED" ? "bg-yellow-500/10 text-yellow-600" : "bg-red-500/10 text-red-500"}`}>{selectedOrderError}</Text>
-                            ) : null}
+                            {selectedOrderError ? <Text className={`mt-4 rounded-2xl px-4 py-3 text-sm font-bold ${selectedOrderQueueStatus === "FAILED" ? "bg-yellow-500/10 text-yellow-600" : "bg-red-500/10 text-red-500"}`}>{selectedOrderError}</Text> : null}
 
                             {isSeller ? (
                                 <Pressable onPress={() => handleOpenConfirmationQr(selectedOrder)} className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-card">
@@ -357,7 +334,6 @@ export default function OrdersScreen() {
                                         <View className="flex-row justify-between gap-3">
                                             <View className="flex-1">
                                                 <Text className="text-sm font-black text-card-foreground">{item.product_name}</Text>
-
                                                 <Text className="mt-1 text-xs text-muted-foreground">
                                                     {item.quantity}x {money(item.unit_price)}
                                                 </Text>

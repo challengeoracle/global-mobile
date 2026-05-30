@@ -17,7 +17,7 @@ export function OrderConfirmationQrModal({ visible, qrValue, synced, message, on
     }
 
     return (
-        <BottomSheetModal visible={visible} eyebrow="Confirmação" title="Mostrar ao cliente" onClose={onClose} maxHeightClassName="max-h-[85%]">
+        <BottomSheetModal visible={visible} eyebrow="Confirmação" title="Mostrar ao cliente" onClose={onClose} maxHeightClassName="max-h-[92%]" scrollContent={false}>
             <View className="items-center gap-4">
                 <View className="rounded-3xl border border-border bg-white p-5">
                     <QRCode value={qrValue} size={230} />
@@ -25,10 +25,8 @@ export function OrderConfirmationQrModal({ visible, qrValue, synced, message, on
 
                 <View className="w-full rounded-3xl border border-border bg-card p-4">
                     <Text className="text-center text-base font-black text-card-foreground">Atualização do pedido</Text>
-
-                    <Text className="mt-3 text-center text-sm leading-6 text-muted-foreground">Peça para o cliente escanear este QR para salvar ou atualizar o pedido no histórico.</Text>
-
-                    <Text className="mt-3 text-center text-sm font-bold text-muted-foreground">{synced ? "Pedido sincronizado com o servidor." : "Pedido salvo offline para sincronizar depois."}</Text>
+                    <Text className="mt-3 text-center text-sm leading-6 text-muted-foreground">Peça para o cliente escanear este QR para registrar a confirmação do pedido.</Text>
+                    <Text className="mt-3 text-center text-sm font-bold text-muted-foreground">{synced ? "Pedido atualizado com sucesso." : "Pedido pronto para ser atualizado quando a conexão estiver disponível."}</Text>
 
                     {message ? <Text className="mt-3 rounded-2xl bg-muted px-4 py-3 text-center text-sm font-bold text-card-foreground">{message}</Text> : null}
 

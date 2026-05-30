@@ -4,12 +4,12 @@ import { SortDirection } from "@/src/domains/catalog/components/catalog-toolbar"
 import { CategoryFormValues } from "@/src/domains/catalog/components/category-form-modal";
 import { ProductFormValues } from "@/src/domains/catalog/components/product-form-modal";
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { useCatalog } from "@/src/domains/catalog/hooks/use-catalog";
 import { adjustLocalProductStock, createLocalCategory, createLocalProduct, deactivateLocalCategory, deactivateLocalProduct, getCatalogStoreIdFromLocal, normalizeLegacyCatalogIds, updateLocalCategory, updateLocalProduct } from "@/src/domains/catalog/repositories/catalog-repository";
 import { CatalogCategory, CatalogProduct, CatalogSyncItem } from "@/src/domains/catalog/types/catalog";
 import { countPendingCatalogChanges, enqueueCatalogChange } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { scheduleSync, syncCatalog } from "@/src/domains/sync/services/sync-engine";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
-import { useCatalog } from "@/src/domains/catalog/hooks/use-catalog";
 
 function now() {
     return new Date().toISOString();
@@ -34,44 +34,35 @@ export function useCatalogScreen() {
 
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
-
     const [detailsVisible, setDetailsVisible] = useState(false);
     const [formVisible, setFormVisible] = useState(false);
     const [stockVisible, setStockVisible] = useState(false);
     const [formMode, setFormMode] = useState<"create" | "edit">("create");
-
     const [search, setSearch] = useState("");
     const [nameSort, setNameSort] = useState<SortDirection>("NONE");
     const [priceSort, setPriceSort] = useState<SortDirection>("NONE");
     const [stockSort, setStockSort] = useState<SortDirection>("NONE");
-
     const [message, setMessage] = useState("");
     const [pendingCount, setPendingCount] = useState(0);
-
     const [categoryFormVisible, setCategoryFormVisible] = useState(false);
     const [categoryFormMode, setCategoryFormMode] = useState<"create" | "edit">("create");
     const [selectedCategory, setSelectedCategory] = useState<CatalogCategory | null>(null);
 
     const products = useMemo(() => {
         const baseProducts = selectedCategoryId ? (catalog.categories.find((category) => category.id === selectedCategoryId)?.products ?? []) : catalog.categories.flatMap((category) => category.products);
-
         const term = search.trim().toLowerCase();
 
-        const filtered = baseProducts.filter((product: { name: string; description?: string | null }) => {
+        const filtered = baseProducts.filter((product) => {
             if (!term) return true;
-
             return product.name.toLowerCase().includes(term) || product.description?.toLowerCase().includes(term);
         });
 
         return [...filtered].sort((a, b) => {
             if (priceSort === "ASC") return b.price - a.price;
             if (priceSort === "DESC") return a.price - b.price;
-
             if (stockSort === "ASC") return b.stockQuantity - a.stockQuantity;
             if (stockSort === "DESC") return a.stockQuantity - b.stockQuantity;
-
             if (nameSort === "DESC") return sortByName(a, b, true);
-
             return sortByName(a, b, false);
         });
     }, [catalog.categories, selectedCategoryId, search, nameSort, priceSort, stockSort]);
@@ -104,7 +95,6 @@ export function useCatalogScreen() {
         }
 
         const localStoreId = await getCatalogStoreIdFromLocal();
-
         if (localStoreId) {
             return localStoreId;
         }
@@ -115,11 +105,10 @@ export function useCatalogScreen() {
 
         if (network.isConnected) {
             const remoteCatalog = await catalog.pullRemoteCatalog();
-
             return remoteCatalog.storeId;
         }
 
-        throw new Error("Store ID não encontrado para salvar o catálogo local.");
+        throw new Error("Loja não encontrada para salvar o catálogo.");
     }
 
     function scheduleCatalogSync() {
@@ -165,9 +154,7 @@ export function useCatalogScreen() {
             if (!network.isConnected) {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
-
-                setMessage("Sem conexão. Catálogo carregado localmente.");
-
+                setMessage("Sem internet no momento. Exibindo os produtos disponíveis.");
                 return;
             }
 
@@ -181,18 +168,15 @@ export function useCatalogScreen() {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
                 setMessage(result.message);
-
                 return;
             }
 
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
-
-            setMessage("Catálogo local atualizado.");
+            setMessage("Catálogo atualizado.");
         } catch (err) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
-
             setMessage(getErrorMessage(err, "Erro ao atualizar catálogo."));
         }
     }
@@ -201,8 +185,7 @@ export function useCatalogScreen() {
         if (!isSeller) {
             await catalog.loadLocalCatalog();
             await refreshPendingCount();
-            setMessage("Catálogo local atualizado.");
-
+            setMessage("Catálogo atualizado.");
             return;
         }
 
@@ -241,7 +224,6 @@ export function useCatalogScreen() {
 
     async function submitProduct(values: ProductFormValues) {
         const storeId = await resolveCatalogStoreId();
-
         const price = Number(values.price);
         const stockQuantity = Number(values.stockQuantity);
 
@@ -287,36 +269,33 @@ export function useCatalogScreen() {
             });
         }
 
-        await saveLocalAndAutoSync(network.isConnected ? "Produto salvo." : "Produto salvo offline.");
+        await saveLocalAndAutoSync("Produto salvo.");
     }
 
     async function adjustStock(quantityDelta: number) {
         if (!selectedProduct) return;
 
         await adjustLocalProductStock(selectedProduct.id, quantityDelta);
-
         await addCatalogQueue({
             operation: "STOCK_UPDATE",
             productId: selectedProduct.id,
             quantityDelta,
         });
 
-        await saveLocalAndAutoSync(network.isConnected ? "Estoque ajustado." : "Estoque ajustado offline.");
+        await saveLocalAndAutoSync("Estoque ajustado.");
     }
 
     async function deactivateProduct() {
         if (!selectedProduct) return;
 
         await deactivateLocalProduct(selectedProduct.id);
-
         await addCatalogQueue({
             operation: "PRODUCT_DEACTIVATE",
             productId: selectedProduct.id,
         });
 
         setDetailsVisible(false);
-
-        await saveLocalAndAutoSync(network.isConnected ? "Produto desativado." : "Produto desativado offline.");
+        await saveLocalAndAutoSync("Produto desativado.");
     }
 
     function openCreateCategory() {
@@ -345,8 +324,7 @@ export function useCatalogScreen() {
                 description: values.description || undefined,
             });
 
-            await saveLocalAndAutoSync(network.isConnected ? "Categoria criada." : "Categoria salva offline.");
-
+            await saveLocalAndAutoSync("Categoria criada.");
             return;
         }
 
@@ -364,19 +342,17 @@ export function useCatalogScreen() {
                 description: values.description || undefined,
             });
 
-            await saveLocalAndAutoSync(network.isConnected ? "Categoria atualizada." : "Categoria atualizada offline.");
+            await saveLocalAndAutoSync("Categoria atualizada.");
         }
     }
 
     async function removeCategory(category: CatalogCategory) {
         if (category.products.length > 0) {
-            setMessage("Não desative uma categoria com produtos. Mova ou desative os produtos antes.");
-
+            setMessage("Não é possível remover uma categoria com produtos.");
             return;
         }
 
         await deactivateLocalCategory(category.id);
-
         await addCatalogQueue({
             operation: "CATEGORY_DEACTIVATE",
             categoryId: category.id,
@@ -386,14 +362,13 @@ export function useCatalogScreen() {
             setSelectedCategoryId(null);
         }
 
-        await saveLocalAndAutoSync(network.isConnected ? "Categoria desativada." : "Categoria desativada offline.");
+        await saveLocalAndAutoSync("Categoria desativada.");
     }
 
     return {
         user,
         network,
         isSeller,
-
         categories: catalog.categories,
         loading: catalog.loading,
         refreshing: catalog.refreshing,
@@ -401,10 +376,8 @@ export function useCatalogScreen() {
         lastSyncAt: catalog.lastSyncAt,
         catalogStoreId: catalog.catalogStoreId,
         loadLocalCatalog: catalog.loadLocalCatalog,
-
         selectedCategoryId,
         setSelectedCategoryId,
-
         selectedProduct,
         detailsVisible,
         setDetailsVisible,
@@ -413,7 +386,6 @@ export function useCatalogScreen() {
         stockVisible,
         setStockVisible,
         formMode,
-
         search,
         setSearch,
         nameSort,
@@ -422,14 +394,11 @@ export function useCatalogScreen() {
         setPriceSort,
         stockSort,
         setStockSort,
-
         products,
         message,
         pendingCount,
-
         refreshCatalog,
         syncPendingChanges,
-
         openProduct,
         openCreate,
         openEdit,
@@ -437,7 +406,6 @@ export function useCatalogScreen() {
         submitProduct,
         adjustStock,
         deactivateProduct,
-
         categoryFormVisible,
         setCategoryFormVisible,
         categoryFormMode,

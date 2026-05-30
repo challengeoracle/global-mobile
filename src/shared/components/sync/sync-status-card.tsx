@@ -24,7 +24,7 @@ type SyncStatusCardProps = {
 };
 
 function formatDate(value?: string | null) {
-    if (!value) return "Ainda não sincronizado";
+    if (!value) return "Ainda não atualizado";
     return new Date(value).toLocaleString("pt-BR");
 }
 
@@ -47,7 +47,7 @@ export function SyncStatusCard({
     syncingNow = false,
     onSyncNow,
 }: SyncStatusCardProps) {
-    const syncLabel = isSyncing || syncingNow ? "Sincronizando" : isConnected ? "Pronto" : "Offline";
+    const syncLabel = isSyncing || syncingNow ? "Atualizando" : isConnected ? "Pronto" : "Offline";
     const statusTone = isConnected ? "text-card-foreground" : "text-red-500";
 
     if (variant === "compact") {
@@ -55,7 +55,7 @@ export function SyncStatusCard({
             <View className="rounded-3xl border border-border bg-card p-4">
                 <View className="flex-row items-center justify-between gap-3">
                     <View className="flex-1">
-                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Sincronização"}</Text>
+                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Atualização"}</Text>
                         <View className="mt-2 flex-row items-center gap-2">
                             <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: onlineColor }} />
                             <Text className={`text-base font-black ${statusTone}`}>{onlineLabel}</Text>
@@ -77,7 +77,7 @@ export function SyncStatusCard({
             <View className="mb-5 rounded-3xl border border-border bg-card p-4">
                 <View className="flex-row items-start justify-between gap-3">
                     <View className="flex-1">
-                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Status local"}</Text>
+                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Atualização"}</Text>
                         <View className="mt-2 flex-row items-center gap-2">
                             <Ionicons name={isConnected ? "cloud-done-outline" : "cloud-offline-outline"} size={16} color={onlineColor} />
                             <Text className={`text-base font-black ${statusTone}`}>{onlineLabel}</Text>
@@ -89,7 +89,7 @@ export function SyncStatusCard({
 
                 <View className="mt-4 flex-row flex-wrap gap-2">
                     <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} {pendingLabel}</Text>
-                    <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${rejectedCount > 0 ? "bg-red-500/10 text-red-500" : "bg-muted text-muted-foreground"}`}>{rejectedCount} erro(s)</Text>
+                    <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${rejectedCount > 0 ? "bg-red-500/10 text-red-500" : "bg-muted text-muted-foreground"}`}>{rejectedCount} aviso(s)</Text>
                 </View>
 
                 {lastError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">{lastError}</Text> : null}
@@ -101,7 +101,7 @@ export function SyncStatusCard({
         <View className="rounded-3xl border border-border bg-card p-5">
             <View className="flex-row items-start justify-between gap-4">
                 <View className="flex-1">
-                    <Text className="text-sm font-bold text-muted-foreground">{title ?? "Sincronização detalhada"}</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">{title ?? "Atualização"}</Text>
                     <View className="mt-2 flex-row items-center gap-2">
                         <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: onlineColor }} />
                         <Text className={`text-lg font-black ${statusTone}`}>{onlineLabel}</Text>
@@ -115,27 +115,27 @@ export function SyncStatusCard({
 
             <View className="mt-4 flex-row flex-wrap gap-2">
                 <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} {pendingLabel}</Text>
-                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{rejectedCount} erro(s)</Text>
+                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{rejectedCount} aviso(s)</Text>
             </View>
 
             <View className="mt-4 gap-3 rounded-2xl bg-muted p-4">
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Alterações locais do catálogo</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Catálogo</Text>
                     <Text className="text-sm font-black text-card-foreground">{pendingCatalogChanges}</Text>
                 </View>
 
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Pedidos salvos neste aparelho</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Pedidos</Text>
                     <Text className="text-sm font-black text-card-foreground">{pendingOrders}</Text>
                 </View>
 
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Última sincronização</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Última atualização</Text>
                     <Text className="max-w-[55%] text-right text-sm font-medium text-card-foreground">{formatDate(lastSyncAt)}</Text>
                 </View>
 
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Device ID</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Dispositivo</Text>
                     <Text className="max-w-[55%] text-right text-sm font-medium text-card-foreground">{deviceId ?? "Não definido"}</Text>
                 </View>
             </View>
@@ -144,7 +144,7 @@ export function SyncStatusCard({
 
             {canSync && onSyncNow ? (
                 <View className="mt-4">
-                    <Button title="Sincronizar agora" onPress={onSyncNow} loading={syncingNow || isSyncing} disabled={!isConnected} />
+                    <Button title="Atualizar agora" onPress={onSyncNow} loading={syncingNow || isSyncing} disabled={!isConnected} />
                 </View>
             ) : null}
         </View>

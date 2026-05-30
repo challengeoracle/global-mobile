@@ -13,6 +13,7 @@ type ProductDetailsModalProps = {
     onDeactivate: () => void;
     onAddToCart?: (product: CatalogProduct) => void;
     onAddToCartAndOpenCart?: (product: CatalogProduct) => void;
+    onBackToCatalog?: () => void;
 };
 
 function money(value: number) {
@@ -22,7 +23,7 @@ function money(value: number) {
     });
 }
 
-export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate, onAddToCart, onAddToCartAndOpenCart }: ProductDetailsModalProps) {
+export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate, onAddToCart, onAddToCartAndOpenCart, onBackToCatalog }: ProductDetailsModalProps) {
     if (!product) return null;
 
     const outOfStock = product.stockQuantity <= 0;
@@ -60,6 +61,10 @@ export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdi
                     </View>
                 ) : (
                     <View className="gap-3">
+                        <Pressable onPress={onBackToCatalog ?? onClose} className="h-12 items-center justify-center rounded-2xl border border-border bg-card">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">Voltar ao catálogo</Text>
+                        </Pressable>
+
                         <Pressable onPress={() => onAddToCart?.(product)} disabled={outOfStock} className="h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-50">
                             <Text className="text-sm font-black uppercase tracking-[2px] text-white">{outOfStock ? "Sem estoque" : "Adicionar e continuar"}</Text>
                         </Pressable>
