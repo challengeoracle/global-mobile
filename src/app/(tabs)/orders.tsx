@@ -4,13 +4,13 @@ import { useColorScheme } from "nativewind";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
-import { OrderConfirmationQrModal } from "@/src/components/orders/order-confirmation-qr-modal";
-import { PageHeader } from "@/src/components/ui/page-header";
-import { useAuth } from "@/src/contexts/auth-context";
-import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow } from "@/src/database/repositories/order-repository";
-import { useNetworkStatus } from "@/src/hooks/use-network-status";
-import { useOrderFlow } from "@/src/hooks/use-order-flow";
-import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/utils/order-qr";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { OrderConfirmationQrModal } from "@/src/domains/order/components/order-confirmation-qr-modal";
+import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow } from "@/src/domains/order/repositories/order-repository";
+import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
+import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
+import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
 function money(value: number) {
     return value.toLocaleString("pt-BR", {

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { ScrollView, Text, View } from "react-native";
 
-import { PageHeader } from "@/src/components/ui/page-header";
+import { PageHeader } from "@/src/shared/components/ui/page-header";
 
 const COLOR_RED = "#dc2626";
 const COLOR_GREEN = "#22c55e";

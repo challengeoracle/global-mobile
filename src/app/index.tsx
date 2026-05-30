@@ -1,7 +1,7 @@
 import { Link, Redirect } from "expo-router";
 import { useEffect, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from "react-native";
-import { useAuth } from "../contexts/auth-context";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 
 export default function AccessScreen() {
     const { loading, isAuthenticated } = useAuth();

@@ -1,18 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-
-import { AuthHeader } from "../components/auth/auth-header";
-import { CustomerSignupForm } from "../components/auth/customer-signup-form";
-import { RoleSelector } from "../components/auth/role-selector";
-import { SellerSignupForm } from "../components/auth/seller-signup-form";
-
-import { Screen } from "../components/ui/screen";
-
-import { useAuth } from "../contexts/auth-context";
-
 import { View } from "react-native";
-import { RegisterCustomerFormData, registerCustomerSchema, RegisterSellerFormData, registerSellerSchema } from "../schemas/auth-schema";
+
+import { AuthHeader } from "@/src/domains/auth/components/auth-header";
+import { CustomerSignupForm } from "@/src/domains/auth/components/customer-signup-form";
+import { RoleSelector } from "@/src/domains/auth/components/role-selector";
+import { SellerSignupForm } from "@/src/domains/auth/components/seller-signup-form";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { RegisterCustomerFormData, registerCustomerSchema, RegisterSellerFormData, registerSellerSchema } from "@/src/domains/auth/utils/auth-schema";
+import { Screen } from "@/src/shared/components/ui/screen";
 
 type RoleOption = "SELLER" | "CUSTOMER";
 

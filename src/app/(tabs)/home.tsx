@@ -1,11 +1,10 @@
 import { ScrollView, View } from "react-native";
 
-import { CustomerHome } from "@/src/components/home/customer-home";
-import { SellerHome } from "@/src/components/home/seller-home";
-
-import { useAuth } from "@/src/contexts/auth-context";
-import { useNetworkStatus } from "@/src/hooks/use-network-status";
-import { useOfflineStatus } from "@/src/hooks/use-offline-status";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { CustomerHome } from "@/src/shared/components/home/customer-home";
+import { SellerHome } from "@/src/shared/components/home/seller-home";
+import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
+import { useOfflineStatus } from "@/src/shared/hooks/use-offline-status";
 
 export default function HomeScreen() {
     const { user } = useAuth();

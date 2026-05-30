@@ -4,17 +4,13 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Text, View } from "react-native";
 
-import { AuthHeader } from "../components/auth/auth-header";
-
-import { FormInput } from "../components/form/form-input";
-import { FormPasswordInput } from "../components/form/form-password-input";
-
-import { Button } from "../components/ui/button";
-import { Screen } from "../components/ui/screen";
-
-import { useAuth } from "../contexts/auth-context";
-
-import { LoginFormData, loginSchema } from "../schemas/auth-schema";
+import { AuthHeader } from "@/src/domains/auth/components/auth-header";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { LoginFormData, loginSchema } from "@/src/domains/auth/utils/auth-schema";
+import { FormInput } from "@/src/shared/components/form/form-input";
+import { FormPasswordInput } from "@/src/shared/components/form/form-password-input";
+import { Button } from "@/src/shared/components/ui/button";
+import { Screen } from "@/src/shared/components/ui/screen";
 
 export default function LoginScreen() {
     const { login } = useAuth();

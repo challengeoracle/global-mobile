@@ -1,4 +1,4 @@
-import { useAuth } from "@/src/contexts/auth-context";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
 import { useColorScheme } from "nativewind";

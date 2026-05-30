@@ -2,13 +2,13 @@ import { useColorScheme } from "nativewind";
 import { useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 
-import { AccountCard } from "@/src/components/settings/account-card";
-import { SettingsItem } from "@/src/components/settings/settings-item";
-import { SettingsDivider, SettingsSection } from "@/src/components/settings/settings-section";
-import { PageHeader } from "@/src/components/ui/page-header";
-import { useAuth } from "@/src/contexts/auth-context";
-import { regenerateDeviceId } from "@/src/lib/secure-storage";
-import { updateSellerDevice } from "@/src/services/auth-service";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { updateSellerDevice } from "@/src/domains/auth/services/auth-service";
+import { AccountCard } from "@/src/shared/components/settings/account-card";
+import { SettingsItem } from "@/src/shared/components/settings/settings-item";
+import { SettingsDivider, SettingsSection } from "@/src/shared/components/settings/settings-section";
+import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { regenerateDeviceId } from "@/src/shared/lib/secure-storage";
 
 export default function SettingsScreen() {
     const { user, logout, refreshUser } = useAuth();

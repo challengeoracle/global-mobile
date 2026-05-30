@@ -4,9 +4,9 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { useEffect, useRef } from "react";
-import { AuthProvider } from "../contexts/auth-context";
-import { initDatabase } from "../database/database";
-import { runMigrations } from "../database/migrations";
+import { AuthProvider } from "@/src/domains/auth/hooks/auth-context";
+import { initDatabase } from "@/src/shared/database/database";
+import { runMigrations } from "@/src/shared/database/migrations";
 
 export default function RootLayout() {
     const { colorScheme, setColorScheme } = useColorScheme();
