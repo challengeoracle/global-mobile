@@ -55,6 +55,22 @@ export default function SettingsScreen() {
         ]);
     }
 
+    function handleLogout() {
+        Alert.alert("Sair da conta", "Fazer logout neste aparelho descarta todas as alterações locais e pedidos pendentes que ainda não foram sincronizados. Deseja continuar?", [
+            {
+                text: "Cancelar",
+                style: "cancel",
+            },
+            {
+                text: "Descartar e sair",
+                style: "destructive",
+                onPress: () => {
+                    logout();
+                },
+            },
+        ]);
+    }
+
     return (
         <ScrollView className="flex-1 bg-background" showsVerticalScrollIndicator={false}>
             <View className="px-6 pb-10 pt-14">
@@ -65,7 +81,7 @@ export default function SettingsScreen() {
                 <View className="mb-6">
                     <SyncStatusCard
                         variant="detailed"
-                        title={isSeller ? "Sincronização do vendedor" : "Estado local"}
+                        title={isSeller ? "Estado local e sincronização" : "Estado local"}
                         onlineLabel={syncStatus.network.isConnected ? "Online" : "Offline"}
                         onlineColor={syncStatus.network.color}
                         isConnected={syncStatus.network.isConnected}
@@ -75,7 +91,7 @@ export default function SettingsScreen() {
                         pendingCatalogChanges={syncStatus.pendingCatalogChanges}
                         pendingOrders={syncStatus.pendingOrders}
                         rejectedCount={syncStatus.rejectedCount}
-                        pendingLabel="pendência(s)"
+                        pendingLabel="registro(s) aguardando envio"
                         lastSyncAt={syncStatus.lastSyncAt}
                         lastError={syncStatus.scopedLastError}
                         deviceId={syncStatus.deviceId}
@@ -91,11 +107,11 @@ export default function SettingsScreen() {
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="cloud-upload-outline" title="Sincronização" description="Filas locais e envio automático" />
+                    <SettingsItem icon="cloud-upload-outline" title="Sincronização" description="Alterações locais salvas aqui e envio automático quando houver internet" />
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="shield-checkmark-outline" title="Operação local" description="SQLite e filas locais ativos por padrão" />
+                    <SettingsItem icon="shield-checkmark-outline" title="Operação local" description="Pedidos e catálogo ficam salvos neste aparelho até sincronizar" />
 
                     {isSeller ? (
                         <>
@@ -107,7 +123,7 @@ export default function SettingsScreen() {
                 </SettingsSection>
 
                 <SettingsSection>
-                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Encerrar sessão neste aparelho" iconColor="#ef4444" danger onPress={logout} />
+                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Descartar dados locais não sincronizados e encerrar sessão" iconColor="#ef4444" danger onPress={handleLogout} />
                 </SettingsSection>
 
                 <Text className="mt-2 text-center text-xs leading-5 text-muted-foreground">OffPay mantém sua operação preparada para vender e pagar mesmo com conexão instável.</Text>

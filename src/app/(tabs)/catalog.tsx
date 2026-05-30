@@ -62,7 +62,6 @@ export default function CatalogScreen() {
         }
 
         const productCount = catalog.categories.reduce((total, category) => total + category.products.length, 0);
-
         const payload = buildCatalogQrPayload({
             storeId: catalog.catalogStoreId,
             categories: catalog.categories,
@@ -107,6 +106,10 @@ export default function CatalogScreen() {
         clearPendingTransition();
         setActiveModal(null);
         openScanner();
+    }
+
+    function reopenCustomerCatalog() {
+        transitionToModal("customerCatalog");
     }
 
     async function handleClearCustomerCatalog() {
@@ -257,11 +260,26 @@ export default function CatalogScreen() {
                     onDeactivate={catalog.deactivateProduct}
                     onAddToCart={(product) => {
                         orders.addToCart(product);
+                        transitionToModal("customerCatalog");
+                    }}
+                    onAddToCartAndOpenCart={(product) => {
+                        orders.addToCart(product);
                         transitionToModal("cart");
                     }}
                 />
 
-                <CartModal visible={activeModal === "cart"} items={orders.cartItems} totalAmount={orders.totalAmount} syncing={orders.syncing} message={orders.message} onClose={closeActiveModal} onRemove={orders.removeFromCart} onQuantityChange={orders.updateQuantity} onCheckout={handleGenerateOrderQr} />
+                <CartModal
+                    visible={activeModal === "cart"}
+                    items={orders.cartItems}
+                    totalAmount={orders.totalAmount}
+                    syncing={orders.syncing}
+                    message={orders.message}
+                    onClose={closeActiveModal}
+                    onRemove={orders.removeFromCart}
+                    onQuantityChange={orders.updateQuantity}
+                    onCheckout={handleGenerateOrderQr}
+                    onContinueShopping={reopenCustomerCatalog}
+                />
 
                 <OrderQrModal
                     visible={activeModal === "orderQr"}
@@ -298,14 +316,14 @@ export default function CatalogScreen() {
 
                     <SyncStatusCard
                         variant="contextual"
-                        title="Fila de catálogo"
+                        title="Alterações locais do catálogo"
                         onlineLabel={catalogSyncStatus.network.isConnected ? "Online" : "Offline"}
                         onlineColor={catalogSyncStatus.network.color}
                         isConnected={catalogSyncStatus.network.isConnected}
                         isSyncing={catalogSyncStatus.isSyncing}
                         pendingCount={catalogSyncStatus.pendingCount}
                         rejectedCount={catalogSyncStatus.rejectedCount}
-                        pendingLabel="de catálogo"
+                        pendingLabel="alteração(ões) para enviar"
                         lastError={catalogSyncStatus.scopedLastError}
                         syncingNow={catalogSyncStatus.syncingNow}
                     />
@@ -334,38 +352,50 @@ export default function CatalogScreen() {
                     />
 
                     {catalog.message || catalog.error ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{catalog.message || catalog.error}</Text> : null}
-
                     {orders.message ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{orders.message}</Text> : null}
 
-                    <View className="mb-5 flex-row items-center justify-between">
-                        <View>
-                            <Text className="text-lg font-black text-foreground">Produtos</Text>
+                    <View className="mb-5 gap-4 rounded-3xl border border-border bg-card p-4">
+                        <View className="flex-row items-center justify-between gap-3">
+                            <View className="flex-1">
+                                <Text className="text-lg font-black text-foreground">Produtos</Text>
+                                <Text className="mt-1 text-sm text-muted-foreground">{catalog.products.length} item(ns) disponíveis nesta loja.</Text>
+                            </View>
 
-                            <Text className="mt-1 text-sm text-muted-foreground">{catalog.products.length} item(ns)</Text>
+                            <View className="rounded-2xl bg-muted px-3 py-2">
+                                <Text className="text-xs font-bold text-muted-foreground">{catalog.network.label}</Text>
+                            </View>
                         </View>
 
-                        <View className="flex-row gap-2">
+                        <View className="flex-row flex-wrap gap-3">
+                            <Pressable onPress={() => transitionToModal("productForm", catalog.openCreate)} className="min-h-14 min-w-[47%] flex-1 flex-row items-center gap-3 rounded-2xl bg-primary px-4 py-3">
+                                <Ionicons name="add" size={18} color={whiteIcon} />
+                                <View className="flex-1">
+                                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Novo produto</Text>
+                                    <Text className="mt-1 text-xs text-white/80">Cadastrar item no catálogo local</Text>
+                                </View>
+                            </Pressable>
+
+                            <Pressable onPress={() => transitionToModal("catalogQr")} className="min-h-14 min-w-[47%] flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3">
+                                <Ionicons name="qr-code-outline" size={18} color={iconColor} />
+                                <View className="flex-1">
+                                    <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">QR do catálogo</Text>
+                                    <Text className="mt-1 text-xs text-muted-foreground">Compartilhar cardápio com cliente</Text>
+                                </View>
+                            </Pressable>
+
                             <Pressable
                                 onPress={() => {
                                     setSellerConfirmationQrValue(null);
                                     setSellerConfirmationMessage(null);
                                     openFullScreenScanner(() => setOrderScannerVisible(true));
                                 }}
-                                className="h-11 flex-row items-center gap-2 rounded-2xl border border-border bg-card px-4"
+                                className="min-h-14 min-w-[47%] flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3"
                             >
                                 <Ionicons name="scan-outline" size={18} color={iconColor} />
-
-                                <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Pedido</Text>
-                            </Pressable>
-
-                            <Pressable onPress={() => transitionToModal("catalogQr")} className="h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card">
-                                <Ionicons name="qr-code-outline" size={18} color={iconColor} />
-                            </Pressable>
-
-                            <Pressable onPress={() => transitionToModal("productForm", catalog.openCreate)} className="h-11 flex-row items-center gap-2 rounded-2xl bg-primary px-4">
-                                <Ionicons name="add" size={18} color={whiteIcon} />
-
-                                <Text className="text-xs font-black uppercase tracking-[1px] text-white">Produto</Text>
+                                <View className="flex-1">
+                                    <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">Ler pedido</Text>
+                                    <Text className="mt-1 text-xs text-muted-foreground">Confirmar compra do cliente por QR</Text>
+                                </View>
                             </Pressable>
                         </View>
                     </View>
@@ -376,7 +406,6 @@ export default function CatalogScreen() {
                         ) : (
                             <View className="rounded-3xl border border-dashed border-border bg-card p-6">
                                 <Text className="text-center text-base font-bold text-card-foreground">Nenhum produto encontrado</Text>
-
                                 <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Atualize o catálogo, ajuste os filtros ou crie um produto.</Text>
                             </View>
                         )}
@@ -385,12 +414,18 @@ export default function CatalogScreen() {
             </ScrollView>
 
             <CatalogQrModal visible={activeModal === "catalogQr"} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={closeActiveModal} />
-
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
-
             <OrderConfirmationQrModal visible={activeModal === "sellerConfirmationQr"} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} message={sellerConfirmationMessage} onClose={handleCloseSellerConfirmationQr} />
 
-            <ProductDetailsModal visible={activeModal === "productDetails"} product={catalog.selectedProduct} isSeller={!!catalog.isSeller} onClose={closeActiveModal} onEdit={() => transitionToModal("productForm", catalog.openEdit)} onAdjustStock={() => transitionToModal("stockAdjust", catalog.openStock)} onDeactivate={catalog.deactivateProduct} />
+            <ProductDetailsModal
+                visible={activeModal === "productDetails"}
+                product={catalog.selectedProduct}
+                isSeller={!!catalog.isSeller}
+                onClose={closeActiveModal}
+                onEdit={() => transitionToModal("productForm", catalog.openEdit)}
+                onAdjustStock={() => transitionToModal("stockAdjust", catalog.openStock)}
+                onDeactivate={catalog.deactivateProduct}
+            />
 
             <ProductFormModal
                 visible={activeModal === "productForm"}

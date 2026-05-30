@@ -18,16 +18,22 @@ export function CustomerCatalogModal({ visible, products, cartCount, onClose, on
     return (
         <BottomSheetModal visible={visible} eyebrow="Catálogo importado" title="Produtos disponíveis" onClose={onClose} maxHeightClassName="max-h-[88%]">
             <View className="mb-4 gap-3">
-                <Pressable onPress={onOpenCart} className="h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primary px-4">
-                    <Ionicons name="cart-outline" size={18} color="#ffffff" />
+                <View className="rounded-3xl border border-border bg-card p-4">
+                    <View className="flex-row items-center justify-between gap-3">
+                        <View className="flex-1">
+                            <Text className="text-sm font-black text-card-foreground">Monte o pedido no seu ritmo</Text>
+                            <Text className="mt-1 text-sm leading-6 text-muted-foreground">Toque em um item para ver detalhes, adicionar ao pedido e continuar navegando pelo catálogo.</Text>
+                        </View>
 
-                    <Text className="text-xs font-black uppercase tracking-[1px] text-white">Gerar QR do pedido {cartCount > 0 ? `(${cartCount})` : ""}</Text>
-                </Pressable>
+                        <Pressable onPress={onOpenCart} className="h-12 min-w-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primary px-4">
+                            <Ionicons name="cart-outline" size={18} color="#ffffff" />
+                            <Text className="text-xs font-black uppercase tracking-[1px] text-white">{cartCount > 0 ? `Pedido (${cartCount})` : "Pedido"}</Text>
+                        </Pressable>
+                    </View>
+                </View>
 
-                <Text className="rounded-2xl bg-muted px-4 py-3 text-sm font-bold leading-5 text-muted-foreground">Monte o pedido e mostre o QR Code para o vendedor confirmar a venda.</Text>
+                <Text className="rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{products.length} produto(s) carregado(s) via QR Code.</Text>
             </View>
-
-            <Text className="mb-4 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{products.length} produto(s) carregado(s) via QR Code.</Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
                 <View className="gap-3">
@@ -36,7 +42,6 @@ export function CustomerCatalogModal({ visible, products, cartCount, onClose, on
                     ) : (
                         <View className="rounded-3xl border border-dashed border-border bg-card p-6">
                             <Text className="text-center text-base font-bold text-card-foreground">Nenhum produto encontrado</Text>
-
                             <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Escaneie um QR Code de catálogo para visualizar produtos.</Text>
                         </View>
                     )}

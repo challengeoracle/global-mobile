@@ -2,7 +2,7 @@ import { randomUUID } from "expo-crypto";
 
 import { CatalogSyncItem } from "@/src/domains/catalog/types/catalog";
 import { OrderSyncRequest } from "@/src/domains/order/types/order";
-import { db } from "@/src/shared/database/database";
+import { db, waitForDatabaseReady } from "@/src/shared/database/database";
 
 type SyncQueueStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "REJECTED";
 
@@ -30,6 +30,10 @@ type ErrorRow = {
     updated_at: string;
 };
 
+type TableInfoRow = {
+    name: string;
+};
+
 type PendingCatalogChange = CatalogSyncItem & {
     queueId: string;
     operationId: string;
@@ -50,6 +54,17 @@ type PendingOrderSync = OrderSyncRequest["orders"][number] & {
 
 function now() {
     return new Date().toISOString();
+}
+
+async function getTableColumns(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    await waitForDatabaseReady();
+    const rows = await db.getAllAsync<TableInfoRow>(`PRAGMA table_info(${tableName})`);
+    return rows.map((row) => row.name);
+}
+
+async function hasStandardSyncQueueSchema(tableName: "catalog_sync_queue" | "order_sync_queue") {
+    const columns = new Set(await getTableColumns(tableName));
+    return columns.has("status") && columns.has("updated_at") && columns.has("last_error");
 }
 
 function buildCatalogPayload(change: CatalogSyncItem) {
@@ -261,11 +276,19 @@ export async function countPendingCatalogChanges() {
 }
 
 export async function countRejectedCatalogChanges() {
+    if (!(await hasStandardSyncQueueSchema("catalog_sync_queue"))) {
+        return 0;
+    }
+
     const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("catalog_sync_queue"));
     return row?.total ?? 0;
 }
 
 export async function getLatestCatalogQueueError() {
+    if (!(await hasStandardSyncQueueSchema("catalog_sync_queue"))) {
+        return null;
+    }
+
     return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("catalog_sync_queue"));
 }
 
@@ -337,11 +360,19 @@ export async function countPendingOrderSyncQueue() {
 }
 
 export async function countRejectedOrderSyncQueue() {
+    if (!(await hasStandardSyncQueueSchema("order_sync_queue"))) {
+        return 0;
+    }
+
     const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("order_sync_queue"));
     return row?.total ?? 0;
 }
 
 export async function getLatestOrderQueueError() {
+    if (!(await hasStandardSyncQueueSchema("order_sync_queue"))) {
+        return null;
+    }
+
     return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("order_sync_queue"));
 }
 

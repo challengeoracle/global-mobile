@@ -23,6 +23,15 @@ type LocalProductRow = {
     updated_at: string | null;
 };
 
+type TableInfoRow = {
+    name: string;
+};
+
+type CatalogSyncQueuePayloadRow = {
+    id: string;
+    payload_json: string;
+};
+
 function toBoolean(value: number) {
     return value === 1;
 }
@@ -38,6 +47,14 @@ function toCatalogProduct(row: LocalProductRow): CatalogProduct {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     };
+}
+
+function stripLegacyPrefix(value: string | undefined | null, prefix: string) {
+    if (!value?.startsWith(prefix)) {
+        return value;
+    }
+
+    return value.slice(prefix.length);
 }
 
 export async function clearCatalog() {
@@ -450,17 +467,53 @@ export async function deactivateLocalCategory(categoryId: string) {
 
 export async function normalizeLegacyCatalogIds() {
     try {
-        await db.runAsync(`
-            UPDATE catalog_sync_queue
-            SET category_id = REPLACE(category_id, 'local-category-', '')
-            WHERE category_id LIKE 'local-category-%'
-        `);
+        const columns = await db.getAllAsync<TableInfoRow>(`PRAGMA table_info(catalog_sync_queue)`);
+        const columnNames = new Set(columns.map((column) => column.name));
 
-        await db.runAsync(`
-            UPDATE catalog_sync_queue
-            SET product_id = REPLACE(product_id, 'local-product-', '')
-            WHERE product_id LIKE 'local-product-%'
-        `);
+        if (columnNames.has("category_id")) {
+            await db.runAsync(`
+                UPDATE catalog_sync_queue
+                SET category_id = REPLACE(category_id, 'local-category-', '')
+                WHERE category_id LIKE 'local-category-%'
+            `);
+        }
+
+        if (columnNames.has("product_id")) {
+            await db.runAsync(`
+                UPDATE catalog_sync_queue
+                SET product_id = REPLACE(product_id, 'local-product-', '')
+                WHERE product_id LIKE 'local-product-%'
+            `);
+        }
+
+        if (columnNames.has("payload_json")) {
+            const rows = await db.getAllAsync<CatalogSyncQueuePayloadRow>(`
+                SELECT id, payload_json
+                FROM catalog_sync_queue
+            `);
+
+            for (const row of rows) {
+                const payload = JSON.parse(row.payload_json) as {
+                    categoryId?: string;
+                    productId?: string;
+                };
+                const categoryId = stripLegacyPrefix(payload.categoryId, "local-category-");
+                const productId = stripLegacyPrefix(payload.productId, "local-product-");
+
+                if (categoryId === payload.categoryId && productId === payload.productId) {
+                    continue;
+                }
+
+                await db.runAsync(
+                    `
+                    UPDATE catalog_sync_queue
+                    SET payload_json = ?
+                    WHERE id = ?
+                    `,
+                    [JSON.stringify({ ...payload, categoryId, productId }), row.id],
+                );
+            }
+        }
     } catch (err) {
         console.warn("Não foi possível normalizar IDs antigos da fila de catálogo.", err);
     }

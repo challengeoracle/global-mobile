@@ -12,6 +12,7 @@ type ProductDetailsModalProps = {
     onAdjustStock: () => void;
     onDeactivate: () => void;
     onAddToCart?: (product: CatalogProduct) => void;
+    onAddToCartAndOpenCart?: (product: CatalogProduct) => void;
 };
 
 function money(value: number) {
@@ -21,26 +22,24 @@ function money(value: number) {
     });
 }
 
-export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate, onAddToCart }: ProductDetailsModalProps) {
+export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdit, onAdjustStock, onDeactivate, onAddToCart, onAddToCartAndOpenCart }: ProductDetailsModalProps) {
     if (!product) return null;
 
     const outOfStock = product.stockQuantity <= 0;
 
     return (
-        <BottomSheetModal visible={visible} eyebrow="Detalhes" title={product.name} onClose={onClose} maxHeightClassName="max-h-[80%]">
+        <BottomSheetModal visible={visible} eyebrow="Detalhes" title={product.name} onClose={onClose} maxHeightClassName="max-h-[82%]">
             <View className="gap-4">
                 {product.description ? <Text className="text-base leading-6 text-muted-foreground">{product.description}</Text> : null}
 
                 <View className="rounded-3xl border border-border bg-card p-4">
                     <View className="flex-row items-center justify-between">
                         <Text className="text-sm font-bold text-muted-foreground">Preço</Text>
-
                         <Text className="text-lg font-black text-card-foreground">{money(product.price)}</Text>
                     </View>
 
                     <View className="mt-3 flex-row items-center justify-between">
                         <Text className="text-sm font-bold text-muted-foreground">Estoque</Text>
-
                         <Text className={`text-lg font-black ${outOfStock ? "text-red-500" : "text-card-foreground"}`}>{product.stockQuantity}</Text>
                     </View>
                 </View>
@@ -60,9 +59,15 @@ export function ProductDetailsModal({ visible, product, isSeller, onClose, onEdi
                         </Pressable>
                     </View>
                 ) : (
-                    <Pressable onPress={() => onAddToCart?.(product)} disabled={outOfStock} className="h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-50">
-                        <Text className="text-sm font-black uppercase tracking-[2px] text-white">{outOfStock ? "Sem estoque" : "Adicionar ao pedido"}</Text>
-                    </Pressable>
+                    <View className="gap-3">
+                        <Pressable onPress={() => onAddToCart?.(product)} disabled={outOfStock} className="h-14 items-center justify-center rounded-2xl bg-primary disabled:opacity-50">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-white">{outOfStock ? "Sem estoque" : "Adicionar e continuar"}</Text>
+                        </Pressable>
+
+                        <Pressable onPress={() => onAddToCartAndOpenCart?.(product)} disabled={outOfStock} className="h-14 items-center justify-center rounded-2xl border border-border bg-card disabled:opacity-50">
+                            <Text className="text-sm font-black uppercase tracking-[2px] text-card-foreground">{outOfStock ? "Estoque indisponível" : "Adicionar e ver pedido"}</Text>
+                        </Pressable>
+                    </View>
                 )}
             </View>
         </BottomSheetModal>

@@ -77,7 +77,7 @@ export function SyncStatusCard({
             <View className="mb-5 rounded-3xl border border-border bg-card p-4">
                 <View className="flex-row items-start justify-between gap-3">
                     <View className="flex-1">
-                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Status da fila"}</Text>
+                        <Text className="text-sm font-bold text-muted-foreground">{title ?? "Status local"}</Text>
                         <View className="mt-2 flex-row items-center gap-2">
                             <Ionicons name={isConnected ? "cloud-done-outline" : "cloud-offline-outline"} size={16} color={onlineColor} />
                             <Text className={`text-base font-black ${statusTone}`}>{onlineLabel}</Text>
@@ -114,18 +114,18 @@ export function SyncStatusCard({
             </View>
 
             <View className="mt-4 flex-row flex-wrap gap-2">
-                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} pendência(s)</Text>
+                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} {pendingLabel}</Text>
                 <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{rejectedCount} erro(s)</Text>
             </View>
 
             <View className="mt-4 gap-3 rounded-2xl bg-muted p-4">
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Pendências de catálogo</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Alterações locais do catálogo</Text>
                     <Text className="text-sm font-black text-card-foreground">{pendingCatalogChanges}</Text>
                 </View>
 
                 <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Pendências de pedidos</Text>
+                    <Text className="text-sm font-bold text-muted-foreground">Pedidos salvos neste aparelho</Text>
                     <Text className="text-sm font-black text-card-foreground">{pendingOrders}</Text>
                 </View>
 
@@ -142,7 +142,11 @@ export function SyncStatusCard({
 
             {lastError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">{lastError}</Text> : null}
 
-            {canSync && onSyncNow ? <View className="mt-4"><Button title="Sincronizar agora" onPress={onSyncNow} loading={syncingNow || isSyncing} disabled={!isConnected} /></View> : null}
+            {canSync && onSyncNow ? (
+                <View className="mt-4">
+                    <Button title="Sincronizar agora" onPress={onSyncNow} loading={syncingNow || isSyncing} disabled={!isConnected} />
+                </View>
+            ) : null}
         </View>
     );
 }

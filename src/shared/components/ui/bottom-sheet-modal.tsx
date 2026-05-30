@@ -19,7 +19,7 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
     const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-    const closeAnimated = useCallback(() => {
+    const closeAnimated = useCallback((notifyOnClose = true) => {
         Animated.parallel([
             Animated.timing(backdropOpacity, {
                 toValue: 0,
@@ -34,7 +34,9 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
             }),
         ]).start(() => {
             setMounted(false);
-            onClose();
+            if (notifyOnClose) {
+                onClose();
+            }
         });
     }, [backdropOpacity, translateY, onClose]);
 
@@ -59,8 +61,12 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
             return;
         }
 
-        closeAnimated();
-    }, [visible, backdropOpacity, translateY, closeAnimated]);
+        if (!mounted) {
+            return;
+        }
+
+        closeAnimated(false);
+    }, [visible, mounted, backdropOpacity, translateY, closeAnimated]);
 
     const panResponder = useRef(
         PanResponder.create({
@@ -95,8 +101,8 @@ export function BottomSheetModal({ visible, title, eyebrow, children, onClose, m
                     <Pressable className="flex-1" onPress={closeAnimated} />
                 </Animated.View>
 
-                <Animated.View {...panResponder.panHandlers} style={{ transform: [{ translateY }] }} className={`${maxHeightClassName} rounded-t-[32px] border-x border-t border-border bg-background px-6 pb-8 pt-4`}>
-                    <View className="mb-4 items-center">
+                <Animated.View style={{ transform: [{ translateY }] }} className={`${maxHeightClassName} rounded-t-[32px] border-x border-t border-border bg-background px-6 pb-8 pt-4`}>
+                    <View {...panResponder.panHandlers} className="mb-4 items-center">
                         <View className="h-1.5 w-12 rounded-full bg-muted-foreground/30" />
                     </View>
 

@@ -3,10 +3,11 @@ import "../../global.css";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { scheduleSync } from "@/src/domains/sync/services/sync-engine";
-import { initDatabase } from "@/src/shared/database/database";
+import { initDatabase, markDatabaseReady } from "@/src/shared/database/database";
 import { runMigrations } from "@/src/shared/database/migrations";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
@@ -52,24 +53,38 @@ function SyncAutoBootstrap() {
 export default function RootLayout() {
     const { colorScheme, setColorScheme } = useColorScheme();
     const hasSetInitialTheme = useRef(false);
+    const [databaseReady, setDatabaseReady] = useState(false);
 
     useEffect(() => {
-        async function prepareDatabase() {
+        const prepareDatabasePromise = (async () => {
             await initDatabase();
             await runMigrations();
-        }
+        })();
 
-        prepareDatabase();
+        markDatabaseReady(prepareDatabasePromise);
+
+        prepareDatabasePromise.finally(() => {
+            setDatabaseReady(true);
+        });
     }, []);
 
     useEffect(() => {
         if (hasSetInitialTheme.current) return;
 
         hasSetInitialTheme.current = true;
-        setColorScheme("light");
+        setColorScheme("dark");
     }, [setColorScheme]);
 
     const isDark = colorScheme === "dark";
+
+    if (!databaseReady) {
+        return (
+            <View className="flex-1 items-center justify-center bg-background">
+                <StatusBar style={isDark ? "light" : "dark"} />
+                <ActivityIndicator color={isDark ? "#f8fafc" : "#0f172a"} size="large" />
+            </View>
+        );
+    }
 
     return (
         <AuthProvider>
