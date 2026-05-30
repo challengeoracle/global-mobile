@@ -9,10 +9,9 @@ import { QuickAction } from "./quick-action";
 type SellerHomeProps = {
     user: any;
     networkInfo: any;
-    offlineStatus: any;
 };
 
-export function SellerHome({ user, networkInfo, offlineStatus }: SellerHomeProps) {
+export function SellerHome({ user, networkInfo }: SellerHomeProps) {
     return (
         <>
             <PageHeader eyebrow="Terminal" title={`Olá, ${user?.name?.split(" ")[0] ?? ""}`} description="Seu terminal salva local primeiro e sincroniza quando houver conexão." />
@@ -20,7 +19,7 @@ export function SellerHome({ user, networkInfo, offlineStatus }: SellerHomeProps
             <View className="mb-6 flex-row gap-3">
                 <ConnectionStatusCard networkInfo={networkInfo} />
 
-                <OfflineStatusCard title="Operação local" offlineEnabled={offlineStatus.offlineEnabled} offlineExpiresAt={offlineStatus.formattedExpiresAt} />
+                <OfflineStatusCard title="Operação local" />
             </View>
 
             <View className="rounded-3xl border border-border bg-card p-5">

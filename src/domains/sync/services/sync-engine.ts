@@ -168,6 +168,11 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
     let queueItems = await getPendingCatalogChanges();
 
     if (skipMessage) {
+        if (options?.isConnected === false && queueItems.length > 0) {
+            const nextRetryAt = buildNextRetryAt(0);
+            await Promise.all(queueItems.map((item) => markCatalogChangeFailed(item.queueId, skipMessage, nextRetryAt)));
+        }
+
         return emptyScopeResult(skipMessage, pendingBefore);
     }
 
@@ -235,7 +240,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
             pendingAfter,
             synced,
             rejected,
-            message: rejected > 0 ? "Algumas alterações de catálogo foram rejeitadas." : "Catálogo sincronizado.",
+            message: rejected > 0 ? "Algumas alterações de catálogo foram rejeitadas e exigem ação." : "Catálogo sincronizado.",
         };
     } catch (err) {
         const error = getErrorMessage(err, "Erro ao sincronizar catálogo.");
@@ -264,6 +269,11 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
     let queueItems = await getPendingOrderSyncQueue();
 
     if (skipMessage) {
+        if (options?.isConnected === false && queueItems.length > 0) {
+            const nextRetryAt = buildNextRetryAt(0);
+            await Promise.all(queueItems.map((item) => markOrderQueueFailed(item.queueId, skipMessage, nextRetryAt)));
+        }
+
         return emptyScopeResult(skipMessage, pendingBefore);
     }
 
@@ -330,7 +340,7 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
             pendingAfter,
             synced,
             rejected,
-            message: rejected > 0 ? "Alguns pedidos foram rejeitados." : "Pedidos sincronizados.",
+            message: rejected > 0 ? "Alguns pedidos foram rejeitados e exigem ação." : "Pedidos sincronizados.",
         };
     } catch (err) {
         const error = getErrorMessage(err, "Erro ao sincronizar pedidos.");

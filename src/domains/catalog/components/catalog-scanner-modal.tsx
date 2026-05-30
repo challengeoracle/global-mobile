@@ -78,7 +78,6 @@ export function CatalogScannerModal({ visible, onClose, onImported }: CatalogSca
                 closeScanner();
             }, 1200); // Dá um tempinho a mais para o usuário curtir a animação
         } catch (err) {
-            console.log("Erro ao importar QR:", err);
             setError(err instanceof Error ? err.message : "QR Code inválido.");
 
             setTimeout(() => {

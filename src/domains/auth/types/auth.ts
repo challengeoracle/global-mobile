@@ -44,7 +44,4 @@ export type RegisterCustomerRequest = {
 export type DeviceStatusResponse = {
     deviceId: string;
     active: boolean;
-    offlineEnabled?: boolean;
-    expired?: boolean;
-    offlineExpiresAt?: string | null;
 };

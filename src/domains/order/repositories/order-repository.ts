@@ -57,12 +57,20 @@ function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue |
         return issue?.lastError ?? "O servidor rejeitou este pedido. Revise os dados e tente novamente.";
     }
 
+    if (issue?.queueStatus === "FAILED") {
+        return issue.lastError ?? "Não foi possível sincronizar agora. Uma nova tentativa será feita automaticamente.";
+    }
+
     if (syncStatus === "SYNCED" || syncStatus === "OFFLINE_SYNCED") {
         return "Pedido sincronizado com o servidor.";
     }
 
     if (syncStatus === "SELLER_CONFIRMED") {
         return "Pedido confirmado pelo vendedor e salvo offline.";
+    }
+
+    if (issue?.queueStatus === "SYNCED") {
+        return "Pedido sincronizado com o servidor.";
     }
 
     return "Pedido salvo localmente aguardando sincronizacao do vendedor.";
@@ -91,6 +99,32 @@ export async function getLocalOrderByLocalId(localOrderId: string) {
         LIMIT 1
         `,
         [localOrderId],
+    );
+}
+
+export async function getLocalOrderByRemoteId(remoteOrderId: string) {
+    return db.getFirstAsync<LocalOrderRow>(
+        `
+        SELECT
+            id,
+            remote_order_id,
+            local_order_id,
+            store_id,
+            customer_id,
+            seller_id,
+            device_id,
+            order_status,
+            payment_status,
+            sync_status,
+            total_amount,
+            created_at,
+            offline_created_at,
+            synced_at
+        FROM orders
+        WHERE remote_order_id = ?
+        LIMIT 1
+        `,
+        [remoteOrderId],
     );
 }
 
@@ -475,6 +509,12 @@ export async function markOrderRejected(params: { localOrderId: string; message?
 
 export async function saveRemoteOrder(order: OrderResponse) {
     await db.withTransactionAsync(async () => {
+        const existingByLocalOrderId = order.localOrderId ? await getLocalOrderByLocalId(order.localOrderId) : null;
+        const existingByRemoteOrderId = await getLocalOrderByRemoteId(order.id);
+        const existingOrder = existingByLocalOrderId ?? existingByRemoteOrderId;
+        const targetOrderId = existingOrder?.id ?? order.id;
+        const targetLocalOrderId = order.localOrderId ?? existingOrder?.local_order_id ?? order.id;
+
         await db.runAsync(
             `
             INSERT OR REPLACE INTO orders (
@@ -494,10 +534,10 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 synced_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [order.id, order.id, order.localOrderId ?? order.id, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, order.offlineCreatedAt ?? null, now()],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, order.offlineCreatedAt ?? null, now()],
         );
 
-        await db.runAsync(`DELETE FROM order_items WHERE order_id = ?`, [order.id]);
+        await db.runAsync(`DELETE FROM order_items WHERE order_id = ?`, [targetOrderId]);
 
         for (const item of order.items) {
             await db.runAsync(
@@ -512,10 +552,16 @@ export async function saveRemoteOrder(order: OrderResponse) {
                     total_price
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 `,
-                [item.id, order.id, item.productId, item.productName, item.unitPrice, item.quantity, item.totalPrice],
+                [item.id, targetOrderId, item.productId, item.productName, item.unitPrice, item.quantity, item.totalPrice],
             );
         }
     });
+}
+
+export async function saveRemoteOrders(orders: OrderResponse[]) {
+    for (const order of orders) {
+        await saveRemoteOrder(order);
+    }
 }
 
 export async function countPendingLocalOrders() {

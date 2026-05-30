@@ -91,11 +91,11 @@ export default function SettingsScreen() {
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="cloud-upload-outline" title="Envio de vendas" description="Sincronização dos próximos módulos" rightText="0" />
+                    <SettingsItem icon="cloud-upload-outline" title="Sincronização" description="Filas locais e envio automático" />
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="shield-checkmark-outline" title="Operação offline" description="Local-first por padrão" />
+                    <SettingsItem icon="shield-checkmark-outline" title="Operação local" description="SQLite e filas locais ativos por padrão" />
 
                     {isSeller ? (
                         <>

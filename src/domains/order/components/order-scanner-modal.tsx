@@ -85,11 +85,10 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
                 sellerDeviceId: deviceId,
             });
 
-            setSuccess("Pedido confirmado.");
+            setSuccess(created.duplicated ? "Pedido já confirmado neste aparelho." : "Pedido confirmado.");
 
             await onConfirmed(created.localOrderId);
         } catch (err) {
-            console.log("Erro ao confirmar pedido:", err);
             setError(err instanceof Error ? err.message : "QR Code inválido.");
 
             setTimeout(() => {

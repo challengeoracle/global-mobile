@@ -6,7 +6,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { OrderConfirmationQrModal } from "@/src/domains/order/components/order-confirmation-qr-modal";
-import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow } from "@/src/domains/order/repositories/order-repository";
+import { buildOrderConfirmationPayloadFromLocal, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow, saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
+import { getMyOrders } from "@/src/domains/order/services/order-service";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
 import { buildOrderConfirmationQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
@@ -28,6 +29,18 @@ function statusLabel(value: string) {
     if (value === "SELLER_CONFIRMED") return "Confirmado offline";
     if (value === "REJECTED") return "Rejeitado";
     return value;
+}
+
+function queueIssueMessage(syncStatus: string, queueStatus?: string, lastError?: string | null) {
+    if (syncStatus === "REJECTED") {
+        return lastError ?? "O servidor rejeitou este pedido.";
+    }
+
+    if (queueStatus === "FAILED") {
+        return lastError ?? "Falha temporária. O app vai tentar sincronizar novamente.";
+    }
+
+    return "";
 }
 
 function paymentLabel(value: string) {
@@ -74,6 +87,7 @@ export default function OrdersScreen() {
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState("");
     const [selectedOrderError, setSelectedOrderError] = useState<string>("");
+    const [selectedOrderQueueStatus, setSelectedOrderQueueStatus] = useState<string>("");
     const [confirmationQrVisible, setConfirmationQrVisible] = useState(false);
     const [confirmationQrValue, setConfirmationQrValue] = useState<string | null>(null);
     const [confirmationQrMessage, setConfirmationQrMessage] = useState<string | null>(null);
@@ -107,18 +121,29 @@ export default function OrdersScreen() {
         if (!order) {
             setItems([]);
             setSelectedOrderError("");
+            setSelectedOrderQueueStatus("");
             return;
         }
 
         const [orderItems, syncIssue] = await Promise.all([getLocalOrderItems(order.id), getOrderSyncIssue(order.local_order_id)]);
         setItems(orderItems);
-        setSelectedOrderError(order.sync_status === "REJECTED" ? (syncIssue?.lastError ?? "O servidor rejeitou este pedido.") : "");
+        setSelectedOrderQueueStatus(syncIssue?.queueStatus ?? "");
+        setSelectedOrderError(queueIssueMessage(order.sync_status, syncIssue?.queueStatus, syncIssue?.lastError));
     }
 
     async function loadOrders() {
         try {
             setLoading(true);
             setMessage("");
+
+            if (network.isConnected) {
+                try {
+                    const remoteOrders = await getMyOrders();
+                    await saveRemoteOrders(remoteOrders);
+                } catch (err) {
+                    setMessage(err instanceof Error ? err.message : "NÃ£o foi possÃ­vel atualizar o histÃ³rico remoto.");
+                }
+            }
 
             const localOrders = await getLocalOrders();
             setOrders(localOrders);
@@ -223,7 +248,7 @@ export default function OrdersScreen() {
 
                                 <Text className="mt-1 text-3xl font-black text-card-foreground">{money(totals.total)}</Text>
 
-                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} pedido(s) no histórico deste aparelho.</Text>
+                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} pedido(s) no histórico combinado.</Text>
                             </View>
 
                             {isSeller ? (
@@ -315,7 +340,9 @@ export default function OrdersScreen() {
                                 </View>
                             </View>
 
-                            {selectedOrderError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{selectedOrderError}</Text> : null}
+                            {selectedOrderError ? (
+                                <Text className={`mt-4 rounded-2xl px-4 py-3 text-sm font-bold ${selectedOrderQueueStatus === "FAILED" ? "bg-yellow-500/10 text-yellow-600" : "bg-red-500/10 text-red-500"}`}>{selectedOrderError}</Text>
+                            ) : null}
 
                             {isSeller ? (
                                 <Pressable onPress={() => handleOpenConfirmationQr(selectedOrder)} className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-card">

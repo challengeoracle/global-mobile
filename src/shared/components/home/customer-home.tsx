@@ -9,10 +9,9 @@ import { QuickAction } from "./quick-action";
 type CustomerHomeProps = {
     user: any;
     networkInfo: any;
-    offlineStatus: any;
 };
 
-export function CustomerHome({ user, networkInfo, offlineStatus }: CustomerHomeProps) {
+export function CustomerHome({ user, networkInfo }: CustomerHomeProps) {
     return (
         <>
             <PageHeader eyebrow="Compras" title={`Olá, ${user?.name?.split(" ")[0] ?? ""}`} description="Monte pedidos localmente e sincronize quando a conexão voltar." />
@@ -20,7 +19,7 @@ export function CustomerHome({ user, networkInfo, offlineStatus }: CustomerHomeP
             <View className="mb-6 flex-row gap-3">
                 <ConnectionStatusCard networkInfo={networkInfo} />
 
-                <OfflineStatusCard title="Operação local" offlineEnabled={offlineStatus.offlineEnabled} offlineExpiresAt={offlineStatus.formattedExpiresAt} />
+                <OfflineStatusCard title="Operação local" />
             </View>
 
             <View className="rounded-3xl border border-border bg-card p-5">
