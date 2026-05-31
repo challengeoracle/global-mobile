@@ -7,7 +7,6 @@ import { saveCatalog } from "@/src/domains/catalog/repositories/catalog-reposito
 import { getMyCatalog } from "@/src/domains/catalog/services/catalog-service";
 import { saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
 import { getMyPurchases, getMySales } from "@/src/domains/order/services/order-service";
-import { getMyPaymentTransactions, getMyPersonalWallet, getMyPersonalWalletTransactions, getMyWallet, getMyWalletTransactions } from "@/src/domains/payment/services/payment-service";
 import { clearLocalWorkspace } from "@/src/shared/database/repositories/local-workspace-repository";
 import { clearSession, getOrCreateDeviceId, getStoredSessionContext, getStoredUser, getToken, saveSessionContext, saveToken, saveUser, type StoredSessionContext } from "@/src/shared/lib/secure-storage";
 
@@ -62,27 +61,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loadingMessage, setLoadingMessage] = useState("Preparando seus dados");
 
     const prepareWorkspaceForUser = useCallback(async (nextUser: UserResponse) => {
-        const isSeller = nextUser.role === "SELLER";
-
         setLoadingMessage("Sincronizando informações");
 
-        if (isSeller) {
+        if (nextUser.role === "SELLER") {
             const [catalog, sales, purchases] = await Promise.all([getMyCatalog(), getMySales(), getMyPurchases()]);
             await saveCatalog(catalog);
             await saveRemoteOrders(dedupeOrdersById([...sales, ...purchases]));
-        } else {
-            const purchases = await getMyPurchases();
-            await saveRemoteOrders(purchases);
-        }
-
-        setLoadingMessage("Carregando pedidos e carteira");
-
-        if (isSeller) {
-            await Promise.all([getMyWallet(), getMyWalletTransactions(), getMyPersonalWallet(), getMyPersonalWalletTransactions(), getMyPaymentTransactions()]);
             return;
         }
 
-        await Promise.all([getMyPersonalWallet(), getMyPersonalWalletTransactions(), getMyPaymentTransactions()]);
+        const purchases = await getMyPurchases();
+        await saveRemoteOrders(purchases);
     }, []);
 
     const syncSessionContext = useCallback(async (nextUser: UserResponse) => {
@@ -90,19 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentContext = buildSessionContext(nextUser);
 
         if (hasContextChanged(previousContext, currentContext)) {
-            console.log("[Auth] Troca de contexto detectada. Limpando dados locais.", {
-                previousUserId: previousContext?.userId ?? null,
-                currentUserId: currentContext.userId,
-                previousRole: previousContext?.role ?? null,
-                currentRole: currentContext.role,
-                previousStoreId: previousContext?.storeId ?? null,
-                currentStoreId: currentContext.storeId,
-            });
             await clearLocalWorkspace();
         }
 
-        await prepareWorkspaceForUser(nextUser);
         await saveSessionContext(currentContext);
+        await prepareWorkspaceForUser(nextUser);
     }, [prepareWorkspaceForUser]);
 
     const bootstrap = useCallback(async () => {
@@ -127,8 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(freshUser);
                 await saveUser(freshUser);
                 await syncSessionContext(freshUser);
-            } catch (err) {
-                console.warn("NÃ£o foi possÃ­vel atualizar o usuÃ¡rio online. Mantendo sessÃ£o local.", err);
+            } catch {
+                // If the backend is unavailable, we keep the last valid local session.
             }
         } catch {
             await clearSession();

@@ -596,7 +596,7 @@ export async function normalizeLegacyCatalogIds() {
                 );
             }
         }
-    } catch (err) {
-        console.warn("Não foi possível normalizar IDs antigos da fila de catálogo.", err);
+    } catch {
+        // Legacy queue normalization is best-effort and should not block the catalog.
     }
 }

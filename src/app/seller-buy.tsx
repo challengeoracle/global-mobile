@@ -118,7 +118,6 @@ export default function SellerBuyScreen() {
                 permissionDescription="Precisamos da câmera para ler o QR Code do catálogo da outra loja."
                 instructionTitle="Aponte para o QR do vendedor"
                 instructionDescription="Esse catálogo será usado apenas durante esta compra."
-                successTone="white"
                 onClose={() => setScannerVisible(false)}
                 onScan={async (data) => {
                     const payload = decodeCatalogQr(data);

@@ -20,11 +20,11 @@ type QrScannerModalProps = {
     instructionDescription: string;
     onClose: () => void;
     onScan: (data: string) => Promise<ScanResult | void>;
-    successTone?: "primary" | "white";
     footerSlot?: ReactNode;
 };
 
 const DEFAULT_CLOSE_DELAY_MS = 1200;
+const SCAN_ORANGE = "#f97316";
 
 export function QrScannerModal({
     visible,
@@ -36,7 +36,6 @@ export function QrScannerModal({
     instructionDescription,
     onClose,
     onScan,
-    successTone = "primary",
     footerSlot,
 }: QrScannerModalProps) {
     const [permission, requestPermission] = useCameraPermissions();
@@ -81,7 +80,7 @@ export function QrScannerModal({
             setSuccess("");
 
             boxOpacity.value = withTiming(1, { duration: 100 });
-            boxScale.value = withSequence(withTiming(0.6, { duration: 150, easing: Easing.out(Easing.exp) }), withSpring(0.75, { damping: 12, stiffness: 200 }));
+            boxScale.value = withSequence(withTiming(0.58, { duration: 150, easing: Easing.out(Easing.exp) }), withSpring(0.78, { damping: 12, stiffness: 200 }));
             iconOpacity.value = withTiming(1, { duration: 100 });
             iconScale.value = withSpring(1, { damping: 10, stiffness: 150 });
 
@@ -115,8 +114,6 @@ export function QrScannerModal({
         transform: [{ scale: iconScale.value }],
         opacity: iconOpacity.value,
     }));
-
-    const successClassName = successTone === "white" ? "text-white" : "text-primary";
 
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanner}>
@@ -156,9 +153,9 @@ export function QrScannerModal({
                         />
 
                         <View className="absolute inset-0 items-center justify-center pointer-events-none">
-                            <Animated.View style={animatedBoxStyle} className="h-72 w-72 items-center justify-center rounded-[32px] border-4 border-white">
+                            <Animated.View style={[animatedBoxStyle, scanned ? { borderColor: SCAN_ORANGE } : null]} className="h-72 w-72 items-center justify-center rounded-[32px] border-4 border-white">
                                 <Animated.View style={animatedIconStyle}>
-                                    <Ionicons name="checkmark-circle" size={80} color="#ffffff" />
+                                    <Ionicons name="checkmark-circle" size={82} color={SCAN_ORANGE} />
                                 </Animated.View>
                             </Animated.View>
                         </View>
@@ -168,7 +165,7 @@ export function QrScannerModal({
                                 <Text className="text-center text-base font-black text-white">{instructionTitle}</Text>
                                 <Text className="mt-2 text-center text-sm leading-6 text-white/70">{instructionDescription}</Text>
 
-                                {success ? <Text className={`mt-4 text-center text-sm font-bold ${successClassName}`}>{success}</Text> : null}
+                                {success ? <Text className="mt-4 text-center text-sm font-bold text-orange-400">{success}</Text> : null}
                                 {error ? <Text className="mt-4 text-center text-sm font-bold text-red-400">{error}</Text> : null}
                                 {footerSlot}
                             </View>

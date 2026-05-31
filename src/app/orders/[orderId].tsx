@@ -11,6 +11,7 @@ import { PaymentTransactionModal } from "@/src/domains/payment/components/paymen
 import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
 import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { StatusChip } from "@/src/shared/components/ui/status-chip";
 import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatShortId, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
@@ -23,9 +24,9 @@ type DetailRowProps = {
 
 function DetailRow({ label, value, subtle = false, selectable = false }: DetailRowProps) {
     return (
-        <View className="flex-row justify-between gap-4 py-3">
+        <View className="flex-row justify-between gap-4 py-2.5">
             <Text className="flex-1 text-sm font-bold text-muted-foreground">{label}</Text>
-            <Text selectable={selectable} className={`flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>
+            <Text selectable={selectable} className={`max-w-[58%] flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>
                 {value || "-"}
             </Text>
         </View>
@@ -50,15 +51,9 @@ export default function OrderDetailsScreen() {
     const totalItems = items.reduce((total, item) => total + item.quantity, 0);
 
     async function hydrateLocalState(targetId: string) {
-        console.log("[OrderDetails] Buscando pedido no SQLite", {
-            targetId,
-        });
         const localOrder = await getLocalOrderByAnyId(targetId);
 
         if (!localOrder) {
-            console.log("[OrderDetails] Pedido não encontrado no SQLite", {
-                targetId,
-            });
             setOrder(null);
             setItems([]);
             setQueueMessage("");
@@ -70,14 +65,6 @@ export default function OrderDetailsScreen() {
         setOrder(localOrder);
         setItems(localItems);
         setQueueMessage(syncIssue?.lastError ?? "");
-        console.log("[OrderDetails] Pedido hidratado do SQLite", {
-            localOrderId: localOrder.local_order_id,
-            remoteOrderId: localOrder.remote_order_id,
-            itens: localItems.length,
-            paymentStatus: localOrder.payment_status,
-            syncStatus: localOrder.sync_status,
-        });
-
         return localOrder;
     }
 
@@ -91,40 +78,21 @@ export default function OrderDetailsScreen() {
         try {
             setLoading(true);
             setMessage("");
-            console.log("[OrderDetails] Carregando detalhes do pedido", {
-                orderId,
-                online: network.isConnected,
-            });
-
             const localOrder = await hydrateLocalState(orderId);
 
-            if (!network.isConnected || !localOrder?.remote_order_id) {
-                console.log("[OrderDetails] Mantendo dados locais no detalhe", {
-                    online: network.isConnected,
-                    remoteOrderId: localOrder?.remote_order_id ?? null,
-                });
+            if (!network.canAttemptRemote || !localOrder?.remote_order_id) {
                 return;
             }
 
             try {
-                console.log("[OrderDetails] Buscando pedido remoto", {
-                    remoteOrderId: localOrder.remote_order_id,
-                });
                 const remoteOrder = await getOrderById(localOrder.remote_order_id);
                 await saveRemoteOrder(remoteOrder);
                 const refreshedLocalOrder = await hydrateLocalState(remoteOrder.id);
 
                 if (refreshedLocalOrder?.remote_order_id && (refreshedLocalOrder.payment_status === "PENDING" || refreshedLocalOrder.payment_status === "PENDING_PAYMENT")) {
                     try {
-                        console.log("[OrderDetails] Consultando pagamento remoto", {
-                            remoteOrderId: refreshedLocalOrder.remote_order_id,
-                        });
                         const payment = await getPaymentTransactionByOrderId(refreshedLocalOrder.remote_order_id);
                         const nextStatus = payment.status === "APPROVED" ? "PAID" : payment.status === "REJECTED" ? "REJECTED" : null;
-                        console.log("[OrderDetails] Retorno do pagamento remoto", {
-                            statusTransacao: payment.status,
-                            paymentStatusAplicado: nextStatus,
-                        });
 
                         if (nextStatus) {
                             await updateLocalOrderPaymentStatusByRemoteId({
@@ -134,12 +102,10 @@ export default function OrderDetailsScreen() {
                             await hydrateLocalState(remoteOrder.id);
                         }
                     } catch {
-                        console.log("[OrderDetails] Pagamento remoto ainda não disponível");
                         // If the payment transaction is not ready yet, we keep the last persisted snapshot.
                     }
                 }
             } catch (err) {
-                console.log("[OrderDetails] Erro ao atualizar pedido com backend", err);
                 setMessage(err instanceof Error ? err.message : "Não foi possível atualizar este pedido com o backend.");
             }
         } finally {
@@ -169,7 +135,7 @@ export default function OrderDetailsScreen() {
         useCallback(() => {
             loadOrderDetails();
             // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [orderId, network.isConnected]),
+        }, [orderId, network.canAttemptRemote]),
     );
 
     if (loading) {
@@ -211,19 +177,19 @@ export default function OrderDetailsScreen() {
                                     <Text className="mt-1 text-sm text-muted-foreground">{order.offline_created_at ? "Registro iniciado offline" : "Registro iniciado online"}</Text>
                                 </View>
 
-                                <View className="items-end">
+                                <View className="max-w-[44%] items-end">
                                     <Text className="text-xs font-black uppercase tracking-[2px] text-muted-foreground">Total</Text>
-                                    <Text className="mt-2 text-3xl font-black text-card-foreground">{formatCurrency(order.total_amount)}</Text>
-                                    <Text className="mt-1 text-sm text-muted-foreground">{totalItems} item(ns)</Text>
+                                    <Text className="mt-2 text-right text-3xl font-black text-card-foreground">{formatCurrency(order.total_amount)}</Text>
+                                    <Text className="mt-1 text-right text-sm text-muted-foreground">{totalItems} item(ns)</Text>
                                 </View>
                             </View>
                         </View>
 
                         <View className="px-5 py-4">
-                            <View className="flex-row flex-wrap gap-2">
-                                <Text className={`rounded-full px-3 py-2 text-xs font-bold ${orderStatusTone(order.order_status)}`}>{formatOrderStatus(order.order_status)}</Text>
-                                <Text className={`rounded-full px-3 py-2 text-xs font-bold ${paymentStatusTone(order.payment_status)}`}>{formatPaymentStatus(order.payment_status)}</Text>
-                                <Text className={`rounded-full px-3 py-2 text-xs font-bold ${syncStatusTone(order.sync_status)}`}>{formatSyncStatus(order.sync_status)}</Text>
+                            <View className="flex-row flex-wrap gap-2 overflow-hidden">
+                                <StatusChip label={formatOrderStatus(order.order_status)} toneClassName={orderStatusTone(order.order_status)} />
+                                <StatusChip label={formatPaymentStatus(order.payment_status)} toneClassName={paymentStatusTone(order.payment_status)} />
+                                <StatusChip label={formatSyncStatus(order.sync_status)} toneClassName={syncStatusTone(order.sync_status)} />
                             </View>
                         </View>
                     </View>
@@ -284,10 +250,10 @@ export default function OrderDetailsScreen() {
     );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, subtle = false }: { title: string; children: ReactNode; subtle?: boolean }) {
     return (
-        <View className="mt-6 rounded-[28px] border border-border bg-card p-5">
-            <Text className="mb-4 text-lg font-black text-card-foreground">{title}</Text>
+        <View className={`mt-5 rounded-[28px] border ${subtle ? "border-border/70" : "border-border"} bg-card p-5`}>
+            <Text className={`mb-4 ${subtle ? "text-base" : "text-lg"} font-black text-card-foreground`}>{title}</Text>
             <View className="gap-3">{children}</View>
         </View>
     );

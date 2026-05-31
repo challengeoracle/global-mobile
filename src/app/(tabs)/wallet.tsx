@@ -8,6 +8,7 @@ import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { paymentStatusTone } from "@/src/domains/order/utils/order-display";
 import { WalletBalanceCard } from "@/src/domains/payment/components/wallet-balance-card";
 import { useWallet } from "@/src/domains/payment/hooks/use-wallet";
+import { StatusChip } from "@/src/shared/components/ui/status-chip";
 import { formatCurrency, formatDateTime, formatPaymentStatus, formatTransactionType } from "@/src/shared/lib/formatters";
 
 export default function WalletScreen() {
@@ -97,8 +98,8 @@ export default function WalletScreen() {
                                         <Text className="text-sm font-black text-card-foreground">{formatCurrency(transaction.amount)}</Text>
                                     </View>
 
-                                    <View className="mt-3 flex-row flex-wrap gap-2">
-                                        <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${paymentStatusTone(transaction.status)}`}>{formatPaymentStatus(transaction.status)}</Text>
+                                    <View className="mt-3 flex-row flex-wrap gap-2 overflow-hidden">
+                                        <StatusChip label={formatPaymentStatus(transaction.status)} toneClassName={paymentStatusTone(transaction.status)} compact />
                                         {transaction.failureReason ? <Text className="rounded-xl bg-red-500/10 px-3 py-2 text-xs font-bold text-red-500">{transaction.failureReason}</Text> : null}
                                     </View>
                                 </View>

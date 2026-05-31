@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useColorScheme } from "nativewind";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
@@ -13,6 +13,7 @@ import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domain
 import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { MutedPill, StatusChip } from "@/src/shared/components/ui/status-chip";
 import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
@@ -61,6 +62,7 @@ export default function OrdersScreen() {
     const [orders, setOrders] = useState<LocalOrderRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState("");
+    const hasLoadedOnceRef = useRef(false);
 
     const totals = useMemo(() => {
         return orders.reduce(
@@ -78,69 +80,14 @@ export default function OrdersScreen() {
         );
     }, [orders]);
 
-    async function loadLocalOrders() {
+    const loadLocalOrders = useCallback(async () => {
         const localOrders = await getLocalOrders();
-        console.log("[Orders] SQLite carregado", {
-            quantidade: localOrders.length,
-            ids: localOrders.map((order) => order.local_order_id),
-        });
         setOrders(localOrders);
         return localOrders;
-    }
+    }, []);
 
-    async function refreshOrdersFromBackend(options?: { delayedRetry?: boolean; silent?: boolean }) {
-        if (!network.canAttemptRemote) {
-            console.log("[Orders] Sem conexão. Mantendo apenas pedidos locais.", {
-                isConnected: network.isConnected,
-                isInternetReachable: network.isInternetReachable,
-                source: network.source,
-                type: network.type,
-            });
-            return;
-        }
-
-        try {
-            console.log("[Orders] Iniciando refresh remoto", {
-                delayedRetry: Boolean(options?.delayedRetry),
-                usuario: user?.id,
-                role: user?.role,
-                isConnected: network.isConnected,
-                isInternetReachable: network.isInternetReachable,
-                source: network.source,
-                type: network.type,
-            });
-            const remoteOrders = await loadRemoteOrders();
-            console.log("[Orders] Pedidos recebidos da API", {
-                quantidade: remoteOrders.length,
-                ids: remoteOrders.map((order) => order.id),
-            });
-            await saveRemoteOrders(remoteOrders);
-            console.log("[Orders] Pedidos remotos salvos no SQLite");
-            await loadLocalOrders();
-
-            if (options?.delayedRetry) {
-                console.log("[Orders] Aguardando novo refresh para reconciliar pagamento");
-                await wait(1800);
-                const refreshedOrders = await loadRemoteOrders();
-                console.log("[Orders] Segundo refresh remoto concluído", {
-                    quantidade: refreshedOrders.length,
-                    ids: refreshedOrders.map((order) => order.id),
-                });
-                await saveRemoteOrders(refreshedOrders);
-                const refreshedLocalOrders = await loadLocalOrders();
-                await reconcilePendingPayments(refreshedLocalOrders);
-                await loadLocalOrders();
-            }
-        } catch (err) {
-            console.log("[Orders] Erro ao atualizar pedidos", err);
-            if (!options?.silent) {
-                setMessage(err instanceof Error ? err.message : "Não foi possível atualizar os pedidos agora.");
-            }
-        }
-    }
-
-    async function reconcilePendingPayments(sourceOrders?: LocalOrderRow[]) {
-        const ordersToCheck = (sourceOrders ?? orders).filter((order) => {
+    const reconcilePendingPayments = useCallback(async (sourceOrders: LocalOrderRow[]) => {
+        const ordersToCheck = sourceOrders.filter((order) => {
             return Boolean(order.remote_order_id) && (order.payment_status === "PENDING" || order.payment_status === "PENDING_PAYMENT");
         });
 
@@ -151,19 +98,8 @@ export default function OrdersScreen() {
                 }
 
                 try {
-                    console.log("[Orders] Consultando transação de pagamento", {
-                        localOrderId: order.local_order_id,
-                        remoteOrderId: order.remote_order_id,
-                        paymentStatusAtual: order.payment_status,
-                    });
                     const transaction = await getPaymentTransactionByOrderId(order.remote_order_id);
                     const nextStatus = transaction.status === "APPROVED" ? "PAID" : transaction.status === "REJECTED" ? "REJECTED" : null;
-
-                    console.log("[Orders] Retorno da transação de pagamento", {
-                        remoteOrderId: order.remote_order_id,
-                        statusTransacao: transaction.status,
-                        paymentStatusAplicado: nextStatus,
-                    });
 
                     if (!nextStatus) {
                         return;
@@ -178,77 +114,88 @@ export default function OrdersScreen() {
                 }
             }),
         );
-    }
+    }, []);
 
-    async function loadRemoteOrders() {
+    const loadRemoteOrders = useCallback(async () => {
         if (!user) {
-            console.log("[Orders] Usuário ausente. Não foi possível buscar pedidos remotos.");
             return [];
         }
 
         if (user.role === "SELLER") {
             const [sales, purchases] = await Promise.all([getMySales(), getMyPurchases()]);
-            console.log("[Orders] SELLER buscou vendas e compras", {
-                vendas: sales.length,
-                compras: purchases.length,
-            });
             return dedupeRemoteOrders([...sales, ...purchases]);
         }
 
         const purchases = await getMyPurchases();
-        console.log("[Orders] CUSTOMER buscou /order/me/purchases", {
-            quantidade: purchases.length,
-        });
 
         if (purchases.length > 0) {
             return purchases;
         }
 
         const remoteOrders = await getMyOrders();
-        console.log("[Orders] CUSTOMER fallback /order/me", {
-            quantidade: remoteOrders.length,
-        });
 
         if (remoteOrders.length > 0) {
             return remoteOrders;
         }
 
-        console.log("[Orders] CUSTOMER fallback final /order/customer/{id}", {
-            customerId: user.id,
-        });
         return getOrdersByCustomer(user.id);
-    }
+    }, [user]);
 
-    async function loadOrders() {
+    const refreshOrdersFromBackend = useCallback(
+        async (options?: { delayedRetry?: boolean; silent?: boolean }) => {
+            if (!network.canAttemptRemote) {
+                return;
+            }
+
+            try {
+                const remoteOrders = await loadRemoteOrders();
+                await saveRemoteOrders(remoteOrders);
+                await loadLocalOrders();
+
+                if (options?.delayedRetry) {
+                    await wait(1800);
+                    const refreshedOrders = await loadRemoteOrders();
+                    await saveRemoteOrders(refreshedOrders);
+                    const refreshedLocalOrders = await loadLocalOrders();
+                    await reconcilePendingPayments(refreshedLocalOrders);
+                    await loadLocalOrders();
+                }
+            } catch (err) {
+                if (!options?.silent) {
+                    setMessage(err instanceof Error ? err.message : "Não foi possível atualizar os pedidos agora.");
+                }
+            }
+        },
+        [loadLocalOrders, loadRemoteOrders, network.canAttemptRemote, reconcilePendingPayments],
+    );
+
+    const loadOrders = useCallback(async () => {
         try {
-            setLoading(true);
+            if (!hasLoadedOnceRef.current) {
+                setLoading(true);
+            }
             setMessage("");
-            console.log("[Orders] Carregando tela de pedidos");
             await loadLocalOrders();
             await refreshOrdersFromBackend({ silent: false });
         } catch (err) {
-            console.log("[Orders] Erro no carregamento inicial", err);
             setMessage(err instanceof Error ? err.message : "Erro ao carregar pedidos.");
         } finally {
+            hasLoadedOnceRef.current = true;
             setLoading(false);
         }
-    }
+    }, [loadLocalOrders, refreshOrdersFromBackend]);
 
-    async function handleSync() {
-        console.log("[Orders] Sincronização manual iniciada");
+    const handleSync = useCallback(async () => {
         const result = await ordersFlow.syncPendingOrders(false);
-        console.log("[Orders] Resultado da sincronização manual", result);
         setMessage(result.message);
         await loadLocalOrders();
         await refreshOrdersFromBackend({ delayedRetry: true, silent: false });
-    }
+    }, [loadLocalOrders, ordersFlow, refreshOrdersFromBackend]);
 
     useFocusEffect(
         useCallback(() => {
-            loadOrders();
-            ordersFlow.refreshPendingOrderCount();
-            // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, []),
+            void loadOrders();
+        }, [loadOrders]),
     );
 
     if (loading) {
@@ -284,7 +231,7 @@ export default function OrdersScreen() {
                             <View className="flex-1">
                                 <Text className="text-sm font-bold text-muted-foreground">{isSeller ? "Total recebido em pedidos" : "Total em compras"}</Text>
                                 <Text className="mt-2 text-3xl font-black text-card-foreground">{formatCurrency(totals.total)}</Text>
-                                <Text className="mt-2 text-sm leading-5 text-muted-foreground">{orders.length} recibo(s) disponíveis no histórico.</Text>
+                                <Text className="mt-1 text-sm leading-5 text-muted-foreground">{orders.length} recibo(s) disponíveis no histórico.</Text>
                             </View>
 
                             {isSeller ? (
@@ -296,10 +243,10 @@ export default function OrdersScreen() {
                         </View>
 
                         <View className="mt-4 flex-row flex-wrap gap-2">
-                            <SummaryPill label={`${totals.pending} pendente(s)`} />
-                            <SummaryPill label={`${totals.confirmed} confirmado(s)`} />
-                            <SummaryPill label={`${totals.synced} sincronizado(s)`} />
-                            <SummaryPill label={`${totals.rejected} com problema`} />
+                            <MutedPill label={`${totals.pending} pendente(s)`} />
+                            <MutedPill label={`${totals.confirmed} confirmado(s)`} />
+                            <MutedPill label={`${totals.synced} sincronizado(s)`} />
+                            <MutedPill label={`${totals.rejected} com problema`} />
                         </View>
 
                         {ordersFlow.message || message ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{ordersFlow.message || message}</Text> : null}
@@ -329,7 +276,7 @@ function ReceiptCard({ order }: { order: LocalOrderRow }) {
         useCallback(() => {
             let active = true;
 
-            (async () => {
+            void (async () => {
                 const [items, issue] = await Promise.all([getLocalOrderItems(order.id), getOrderSyncIssue(order.local_order_id)]);
 
                 if (!active) {
@@ -356,21 +303,21 @@ function ReceiptCard({ order }: { order: LocalOrderRow }) {
                         <Text className="mt-1 text-sm text-muted-foreground">{formatDateTime(getPrimaryOrderDate(order))}</Text>
                     </View>
 
-                    <View className="items-end">
+                    <View className="max-w-[42%] items-end">
                         <Text className="text-xs font-bold uppercase tracking-[1px] text-muted-foreground">Total</Text>
-                        <Text className="mt-1 text-2xl font-black text-card-foreground">{formatCurrency(order.total_amount)}</Text>
+                        <Text className="mt-1 text-right text-2xl font-black text-card-foreground">{formatCurrency(order.total_amount)}</Text>
                     </View>
                 </View>
             </View>
 
             <View className="gap-4 px-5 py-4">
-                <View className="flex-row flex-wrap gap-2">
-                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${orderStatusTone(order.order_status)}`}>{formatOrderStatus(order.order_status)}</Text>
-                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${paymentStatusTone(order.payment_status)}`}>{formatPaymentStatus(order.payment_status)}</Text>
-                    <Text className={`rounded-full px-3 py-2 text-xs font-bold ${syncStatusTone(order.sync_status)}`}>{formatSyncStatus(order.sync_status)}</Text>
+                <View className="flex-row flex-wrap gap-2 overflow-hidden">
+                    <StatusChip label={formatOrderStatus(order.order_status)} toneClassName={orderStatusTone(order.order_status)} />
+                    <StatusChip label={formatPaymentStatus(order.payment_status)} toneClassName={paymentStatusTone(order.payment_status)} />
+                    <StatusChip label={formatSyncStatus(order.sync_status)} toneClassName={syncStatusTone(order.sync_status)} />
                 </View>
 
-                <View className="flex-row items-center justify-between">
+                <View className="flex-row flex-wrap items-center justify-between gap-2">
                     <Text className="text-sm text-muted-foreground">{itemCount === null ? "Carregando itens..." : `${itemCount} item(ns)`}</Text>
                     <Text className="text-sm text-muted-foreground">{order.offline_created_at ? "Compra criada offline" : "Compra criada online"}</Text>
                 </View>
@@ -384,8 +331,4 @@ function ReceiptCard({ order }: { order: LocalOrderRow }) {
             </View>
         </Pressable>
     );
-}
-
-function SummaryPill({ label }: { label: string }) {
-    return <Text className="rounded-full bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{label}</Text>;
 }

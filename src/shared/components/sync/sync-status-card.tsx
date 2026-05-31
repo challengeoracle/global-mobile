@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Text, View } from "react-native";
 
+import { MutedPill } from "@/src/shared/components/ui/status-chip";
 import { Button } from "@/src/shared/components/ui/button";
 
 type SyncStatusCardProps = {
@@ -88,8 +89,8 @@ export function SyncStatusCard({
                 </View>
 
                 <View className="mt-4 flex-row flex-wrap gap-2">
-                    <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} {pendingLabel}</Text>
-                    <Text className={`rounded-xl px-3 py-2 text-xs font-bold ${rejectedCount > 0 ? "bg-red-500/10 text-red-500" : "bg-muted text-muted-foreground"}`}>{rejectedCount} aviso(s)</Text>
+                    <MutedPill label={`${pendingCount} ${pendingLabel}`} />
+                    <Text className={`max-w-full overflow-hidden rounded-full px-3 py-1.5 text-[11px] font-bold leading-4 ${rejectedCount > 0 ? "bg-red-500/10 text-red-500" : "bg-muted text-muted-foreground"}`}>{rejectedCount} aviso(s)</Text>
                 </View>
 
                 {lastError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">{lastError}</Text> : null}
@@ -114,8 +115,8 @@ export function SyncStatusCard({
             </View>
 
             <View className="mt-4 flex-row flex-wrap gap-2">
-                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{pendingCount} {pendingLabel}</Text>
-                <Text className="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">{rejectedCount} aviso(s)</Text>
+                <MutedPill label={`${pendingCount} ${pendingLabel}`} />
+                <MutedPill label={`${rejectedCount} aviso(s)`} />
             </View>
 
             <View className="mt-4 gap-3 rounded-2xl bg-muted p-4">

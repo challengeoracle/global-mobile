@@ -29,7 +29,7 @@ export function useCatalogScreen() {
     const isSeller = user?.role === "SELLER";
 
     const catalog = useCatalog({
-        autoLoad: true,
+        autoLoad: false,
     });
 
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -103,7 +103,7 @@ export function useCatalogScreen() {
             return user.storeId;
         }
 
-        if (network.isConnected) {
+        if (network.canAttemptRemote) {
             const remoteCatalog = await catalog.pullRemoteCatalog();
             return remoteCatalog.storeId;
         }
@@ -112,11 +112,11 @@ export function useCatalogScreen() {
     }
 
     function scheduleCatalogSync() {
-        if (!network.isConnected || !isSeller) return;
+        if (!network.canAttemptRemote || !isSeller) return;
 
         scheduleSync({
             scopes: ["catalog"],
-            isConnected: network.isConnected,
+            isConnected: network.canAttemptRemote,
             canSync: isSeller,
             pullCatalogAfterSync: true,
             onComplete: async () => {
@@ -145,13 +145,13 @@ export function useCatalogScreen() {
     useEffect(() => {
         scheduleCatalogSync();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isSeller, network.isConnected]);
+    }, [isSeller, network.canAttemptRemote]);
 
     async function refreshCatalog() {
         try {
             setMessage("");
 
-            if (!network.isConnected) {
+            if (!network.canAttemptRemote) {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
                 setMessage("Sem internet no momento. Exibindo os produtos disponíveis.");
@@ -160,7 +160,7 @@ export function useCatalogScreen() {
 
             if (isSeller) {
                 const result = await syncCatalog({
-                    isConnected: network.isConnected,
+                    isConnected: network.canAttemptRemote,
                     canSync: isSeller,
                     pullCatalogAfterSync: true,
                 });
@@ -190,7 +190,7 @@ export function useCatalogScreen() {
         }
 
         const result = await syncCatalog({
-            isConnected: network.isConnected,
+            isConnected: network.canAttemptRemote,
             canSync: isSeller,
             pullCatalogAfterSync: true,
         });

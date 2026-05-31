@@ -195,14 +195,6 @@ export function useOrderFlow(storeId?: string | null) {
             paymentStatus: "PENDING_PAYMENT",
             enqueueSync: false,
         });
-        console.log("[OrderFlow] Pedido salvo localmente ao gerar QR", {
-            localOrderId,
-            storeId,
-            customerId: user.id,
-            itens: items.length,
-            totalAmount: qrTotalAmount,
-        });
-
         setGeneratedOrderQr(generated);
         setMessage("Mostre o QR Code para o vendedor confirmar a venda.");
 
@@ -245,20 +237,11 @@ export function useOrderFlow(storeId?: string | null) {
 
         try {
             setSyncing(true);
-            console.log("[OrderFlow] Iniciando sync de pedidos pendentes", {
-                role: user.role,
-                online: network.canAttemptRemote,
-                isConnected: network.isConnected,
-                isInternetReachable: network.isInternetReachable,
-                source: network.source,
-                type: network.type,
-            });
 
             const result = await syncOrders({
                 isConnected: network.canAttemptRemote,
                 canSync: user.role === "SELLER",
             });
-            console.log("[OrderFlow] Resultado bruto da sync", result);
 
             const pendingAfter = await refreshPendingOrderCount();
 

@@ -18,7 +18,6 @@ export function CatalogScannerModal({ visible, onClose, onImported }: CatalogSca
             permissionDescription="Precisamos da câmera para ler o QR Code do catálogo da loja."
             instructionTitle="Aponte para o QR do vendedor"
             instructionDescription="O catálogo será salvo neste aparelho para montar o pedido."
-            successTone="white"
             onClose={onClose}
             onScan={async (data) => {
                 const payload = decodeCatalogQr(data);
