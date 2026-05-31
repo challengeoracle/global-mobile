@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ScrollView, Text, View } from "react-native";
+import { router } from "expo-router";
+import { ScrollView, Text, View, Pressable } from "react-native";
 
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 
@@ -12,6 +13,10 @@ export default function ExploreScreen() {
     return (
         <ScrollView className="flex-1 bg-background" showsVerticalScrollIndicator={false}>
             <View className="px-6 pb-10 pt-14">
+                <Pressable onPress={() => router.push("/(tabs)/settings")} className="mb-6 h-11 w-11 items-center justify-center rounded-2xl bg-card">
+                    <Ionicons name="arrow-back" size={20} color="#f8fafc" />
+                </Pressable>
+
                 <PageHeader eyebrow="Operação" title="Como funciona" description="O OffPay mantém pedidos e pagamentos organizados mesmo quando cliente, vendedor ou ambos ficam sem internet." />
 
                 <View className="mb-6 rounded-3xl border border-border bg-card p-5">
@@ -23,7 +28,7 @@ export default function ExploreScreen() {
                         <Text className="flex-1 text-lg font-black text-card-foreground">Pagamento offline não é pagamento confirmado</Text>
                     </View>
 
-                    <Text className="text-base leading-7 text-muted-foreground text-center">Quando não há conexão, o app não confirma dinheiro recebido nem pagamento realizado. Ele cria uma operação pendente, salva as evidências no dispositivo e conclui tudo quando a rede voltar.</Text>
+                    <Text className="text-center text-base leading-7 text-muted-foreground">Quando não há conexão, o app não confirma dinheiro recebido nem pagamento realizado. Ele cria uma operação pendente, salva as evidências no dispositivo e conclui tudo quando a rede voltar.</Text>
                 </View>
 
                 <View className="mb-6 rounded-3xl border border-border bg-card p-5">
@@ -31,9 +36,7 @@ export default function ExploreScreen() {
 
                     <View className="gap-3">
                         <StepItem number="1" title="Salvar local" description="Pedidos, catálogo e vendas entram primeiro no banco local do aparelho." />
-
                         <StepItem number="2" title="Uso local" description="Com a rede indisponível, o app continua criando pedidos, QR Codes e registros pendentes." />
-
                         <StepItem number="3" title="Sincronização" description="Quando a conexão retorna, o backend valida os dados e conclui ou rejeita a operação." />
                     </View>
                 </View>
@@ -43,19 +46,15 @@ export default function ExploreScreen() {
 
                     <View className="gap-3">
                         <FlowCard icon="wifi-outline" color={COLOR_GREEN} title="Cliente online + vendedor online" description="Fluxo normal. Pedido, pagamento, validação e atualização da carteira acontecem na hora." />
-
                         <FlowCard icon="cloud-offline-outline" color={COLOR_RED} title="Cliente offline + vendedor offline" description="O pedido e a venda ficam pendentes. Ninguém paga nem recebe na hora. Tudo será validado quando a conexão voltar." />
-
                         <FlowCard icon="phone-portrait-outline" color={COLOR_PURPLE} title="Cliente online + vendedor offline" description="O cliente pode pagar online. O vendedor salva a venda localmente e sincroniza depois para confirmar o recebimento." />
-
                         <FlowCard icon="qr-code-outline" color={COLOR_ORANGE} title="Cliente offline + vendedor online" description="O vendedor registra a venda no backend, mas o pagamento pode ficar pendente até o cliente recuperar conexão." />
                     </View>
                 </View>
 
                 <View className="rounded-3xl border border-border bg-card p-5">
                     <Text className="mb-3 text-lg font-black text-card-foreground">Regra principal</Text>
-
-                    <Text className="text-base leading-7 text-muted-foreground text-justify">O OffPay evita que a venda seja perdida por falta de internet. A operação pode nascer offline, mas só é finalizada depois da sincronização e validação dos serviços centrais.</Text>
+                    <Text className="text-justify text-base leading-7 text-muted-foreground">O OffPay evita que a venda seja perdida por falta de internet. A operação pode nascer offline, mas só é finalizada depois da sincronização e validação dos serviços centrais.</Text>
                 </View>
             </View>
         </ScrollView>
@@ -71,8 +70,7 @@ function StepItem({ number, title, description }: { number: string; title: strin
 
             <View className="flex-1">
                 <Text className="text-sm font-bold text-foreground">{title}</Text>
-
-                <Text className="mt-1 text-xs leading-5 text-muted-foreground text-justify">{description}</Text>
+                <Text className="mt-1 text-justify text-xs leading-5 text-muted-foreground">{description}</Text>
             </View>
         </View>
     );
@@ -89,7 +87,7 @@ function FlowCard({ icon, color, title, description }: { icon: keyof typeof Ioni
                 <Text className="flex-1 text-sm font-black text-foreground">{title}</Text>
             </View>
 
-            <Text className="text-xs leading-5 text-muted-foreground text-justify">{description}</Text>
+            <Text className="text-justify text-xs leading-5 text-muted-foreground">{description}</Text>
         </View>
     );
 }

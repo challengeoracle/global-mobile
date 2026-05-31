@@ -65,11 +65,15 @@ export default function SettingsScreen() {
 
                     <SettingsDivider />
 
-                    <SettingsItem icon="list-outline" title="Operação" description="Ver como o fluxo offline-first funciona no OffPay" onPress={() => router.push("/(tabs)/explore")} />
+                    <SettingsItem icon="information-circle-outline" title="Sobre o App" description="Ver versão, commit de referência e informações do projeto." onPress={() => router.push("/about")} />
+
+                    <SettingsDivider />
+
+                    <SettingsItem icon="list-outline" title="Operação" description="Ver como o fluxo offline-first funciona no OffPay." onPress={() => router.push("/(tabs)/explore")} />
                 </SettingsSection>
 
                 <SettingsSection>
-                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Descartar dados locais não sincronizados e encerrar sessão" iconColor="#ef4444" danger onPress={handleLogout} />
+                    <SettingsItem icon="log-out-outline" title="Sair da conta" description="Descartar dados locais não sincronizados e encerrar sessão." iconColor="#ef4444" danger onPress={handleLogout} />
                 </SettingsSection>
 
                 <Text className="mt-2 text-center text-xs leading-5 text-muted-foreground">OffPay mantém sua operação preparada para vender e pagar mesmo com conexão instável.</Text>
