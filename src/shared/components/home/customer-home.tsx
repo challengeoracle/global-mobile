@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { Text, View } from "react-native";
 
 import { PageHeader } from "@/src/shared/components/ui/page-header";
@@ -26,11 +27,11 @@ export function CustomerHome({ user, networkInfo }: CustomerHomeProps) {
                 <Text className="mb-4 text-lg font-black text-card-foreground">Ações do cliente</Text>
 
                 <View className="gap-3">
-                    <QuickAction icon="cube-outline" title="Ver catálogo" description="Acessar produtos disponíveis." />
+                    <QuickAction icon="cube-outline" title="Ver catálogo" description="Importar loja e montar pedido." onPress={() => router.push("/(tabs)/catalog")} />
 
-                    <QuickAction icon="qr-code-outline" title="Gerar QR do pedido" description="Enviar pedido ao vendedor." />
+                    <QuickAction icon="receipt-outline" title="Meus pedidos" description="Acompanhar pagamentos e sincronização." onPress={() => router.push("/(tabs)/orders")} />
 
-                    <QuickAction icon="card-outline" title="Pagamentos" description="Ver pagamentos pendentes." />
+                    <QuickAction icon="wallet-outline" title="Carteira" description="Consultar saldo e extrato financeiro." onPress={() => router.push("/(tabs)/wallet")} />
                 </View>
             </View>
         </>

@@ -32,7 +32,7 @@ export default function TabLayout() {
     }
 
     const createTabBarIcon = (name: IconName) => {
-        const IconComponent = ({ color, size }: { color: string; size: number }) => <Ionicons name={name} color={color} size={size} />;
+        const IconComponent = ({ color, size }: { color: string; size: number }) => <Ionicons name={name} color={color} size={Math.max(16, size - 3)} />;
         IconComponent.displayName = `TabBarIcon(${name})`;
         return IconComponent;
     };
@@ -43,23 +43,26 @@ export default function TabLayout() {
                 headerShown: false,
                 tabBarActiveTintColor: isDark ? DARK_ACTIVE : LIGHT_ACTIVE,
                 tabBarInactiveTintColor: isDark ? DARK_INACTIVE : LIGHT_INACTIVE,
+                tabBarIconStyle: {
+                    marginBottom: 2,
+                },
+                tabBarLabelPosition: "below-icon",
                 tabBarLabelStyle: {
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: "700",
-                    letterSpacing: 1,
-                    textTransform: "uppercase",
+                    letterSpacing: 0.2,
                 },
                 tabBarStyle: {
-                    height: 76 + insets.bottom,
-                    paddingBottom: insets.bottom + 12,
-                    paddingTop: 12,
-                    paddingHorizontal: 10,
+                    height: 68 + insets.bottom,
+                    paddingBottom: insets.bottom + 8,
+                    paddingTop: 6,
+                    paddingHorizontal: 8,
                     backgroundColor: isDark ? "#09090b" : "#ffffff",
                     borderTopWidth: 1,
                     borderTopColor: isDark ? "#27272a" : "#e4e4e7",
                 },
                 tabBarItemStyle: {
-                    paddingVertical: 4,
+                    paddingVertical: 2,
                     paddingHorizontal: 2,
                 },
             }}

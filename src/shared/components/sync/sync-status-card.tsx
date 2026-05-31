@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Text, View } from "react-native";
 
 import { MutedPill } from "@/src/shared/components/ui/status-chip";
-import { Button } from "@/src/shared/components/ui/button";
 
 type SyncStatusCardProps = {
     variant: "compact" | "contextual" | "detailed";
@@ -18,7 +17,6 @@ type SyncStatusCardProps = {
     pendingLabel: string;
     lastSyncAt?: string | null;
     lastError?: string | null;
-    deviceId?: string | null;
     canSync?: boolean;
     syncingNow?: boolean;
     onSyncNow?: () => void;
@@ -43,10 +41,7 @@ export function SyncStatusCard({
     pendingLabel,
     lastSyncAt,
     lastError,
-    deviceId,
-    canSync = false,
     syncingNow = false,
-    onSyncNow,
 }: SyncStatusCardProps) {
     const syncLabel = isSyncing || syncingNow ? "Atualizando" : isConnected ? "Pronto" : "Offline";
     const statusTone = isConnected ? "text-card-foreground" : "text-red-500";
@@ -134,20 +129,9 @@ export function SyncStatusCard({
                     <Text className="text-sm font-bold text-muted-foreground">Última atualização</Text>
                     <Text className="max-w-[55%] text-right text-sm font-medium text-card-foreground">{formatDate(lastSyncAt)}</Text>
                 </View>
-
-                <View className="flex-row items-center justify-between gap-3">
-                    <Text className="text-sm font-bold text-muted-foreground">Dispositivo</Text>
-                    <Text className="max-w-[55%] text-right text-sm font-medium text-card-foreground">{deviceId ?? "Não definido"}</Text>
-                </View>
             </View>
 
             {lastError ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">{lastError}</Text> : null}
-
-            {canSync && onSyncNow ? (
-                <View className="mt-4">
-                    <Button title="Atualizar agora" onPress={onSyncNow} loading={syncingNow || isSyncing} disabled={!isConnected} />
-                </View>
-            ) : null}
         </View>
     );
 }

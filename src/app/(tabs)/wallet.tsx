@@ -1,15 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useColorScheme } from "nativewind";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { paymentStatusTone } from "@/src/domains/order/utils/order-display";
 import { WalletBalanceCard } from "@/src/domains/payment/components/wallet-balance-card";
 import { useWallet } from "@/src/domains/payment/hooks/use-wallet";
+import { PaymentTransactionResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
 import { StatusChip } from "@/src/shared/components/ui/status-chip";
 import { formatCurrency, formatDateTime, formatPaymentStatus, formatTransactionType } from "@/src/shared/lib/formatters";
+
+type WalletMovement = {
+    id: string;
+    title: string;
+    description: string;
+    amount: number;
+    createdAt: string;
+    badge?: string;
+    paymentStatus?: string;
+    failureReason?: string | null;
+};
 
 export default function WalletScreen() {
     const { colorScheme } = useColorScheme();
@@ -19,6 +31,16 @@ export default function WalletScreen() {
 
     const isSeller = user?.role === "SELLER";
     const canSettleStoreWallet = isSeller && (storeWallet?.pendingBalance ?? 0) > 0;
+
+    const movements = useMemo(
+        () => buildWalletMovements({
+            isSeller,
+            personalWalletTransactions,
+            storeWalletTransactions,
+            paymentTransactions,
+        }),
+        [isSeller, paymentTransactions, personalWalletTransactions, storeWalletTransactions],
+    );
 
     useFocusEffect(
         useCallback(() => {
@@ -66,82 +88,100 @@ export default function WalletScreen() {
                     </View>
                 )}
 
-                <Pressable onPress={() => depositFake({ amount: 100, description: "Dep\u00f3sito fake na carteira" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
+                <Pressable onPress={() => depositFake({ amount: 100, description: "Depósito fake na carteira" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
                     {depositing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="add-circle-outline" size={18} color="#ffffff" />}
                     <Text className="text-sm font-black uppercase tracking-[1px] text-primary-foreground">Adicionar R$ 100</Text>
                 </Pressable>
 
                 {error ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{error}</Text> : null}
 
-                <WalletTransactionsSection
-                    title={isSeller ? "Extrato da carteira pessoal" : "Extrato da carteira"}
-                    description={isSeller ? "Depósitos e pagamentos vinculados à sua carteira pessoal." : "Depósitos e pagamentos vinculados à sua carteira."}
-                    transactions={personalWalletTransactions}
-                />
-
-                {isSeller ? <WalletTransactionsSection title="Extrato da loja" description="Créditos de venda e liberações de saldo da carteira da loja." transactions={storeWalletTransactions} /> : null}
-
-                <View className="mt-6 rounded-3xl border border-border bg-card p-5">
-                    <Text className="text-lg font-black text-card-foreground">Transações de pagamento</Text>
-                    <Text className="mt-1 text-sm text-muted-foreground">Histórico do serviço de pagamento para pedidos processados.</Text>
-
-                    <View className="mt-4 gap-3">
-                        {paymentTransactions.length > 0 ? (
-                            paymentTransactions.map((transaction) => (
-                                <View key={transaction.id} className="rounded-2xl border border-border bg-background p-4">
-                                    <View className="flex-row items-start justify-between gap-3">
-                                        <View className="flex-1">
-                                            <Text className="text-sm font-black text-card-foreground">Pedido #{transaction.localOrderId?.slice(0, 8) ?? transaction.orderId.slice(0, 8)}</Text>
-                                            <Text className="mt-1 text-sm text-muted-foreground">{formatDateTime(transaction.createdAt)}</Text>
-                                        </View>
-
-                                        <Text className="text-sm font-black text-card-foreground">{formatCurrency(transaction.amount)}</Text>
-                                    </View>
-
-                                    <View className="mt-3 flex-row flex-wrap gap-2 overflow-hidden">
-                                        <StatusChip label={formatPaymentStatus(transaction.status)} toneClassName={paymentStatusTone(transaction.status)} compact />
-                                        {transaction.failureReason ? <Text className="rounded-xl bg-red-500/10 px-3 py-2 text-xs font-bold text-red-500">{transaction.failureReason}</Text> : null}
-                                    </View>
-                                </View>
-                            ))
-                        ) : (
-                            <View className="rounded-2xl border border-dashed border-border bg-background p-5">
-                                <Text className="text-center text-base font-bold text-card-foreground">Nenhum pagamento processado</Text>
-                                <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Quando pedidos forem processados pelo serviço de pagamento, eles aparecerão aqui.</Text>
-                            </View>
-                        )}
-                    </View>
-                </View>
+                <WalletMovementsSection isSeller={isSeller} movements={movements} />
             </View>
         </ScrollView>
     );
 }
 
-function WalletTransactionsSection({ title, description, transactions }: { title: string; description: string; transactions: { id: string; type: string; description: string; referenceId: string; createdAt: string; amount: number }[] }) {
+function buildWalletMovements({
+    isSeller,
+    personalWalletTransactions,
+    storeWalletTransactions,
+    paymentTransactions,
+}: {
+    isSeller: boolean;
+    personalWalletTransactions: WalletTransactionResponse[];
+    storeWalletTransactions: WalletTransactionResponse[];
+    paymentTransactions: PaymentTransactionResponse[];
+}) {
+    const walletMovements: WalletMovement[] = [
+        ...personalWalletTransactions.map((transaction) => ({
+            id: `personal-${transaction.id}`,
+            title: formatTransactionType(transaction.type),
+            description: transaction.description || transaction.referenceId,
+            amount: transaction.amount,
+            createdAt: transaction.createdAt,
+            badge: isSeller ? "Carteira pessoal" : "Sua carteira",
+        })),
+        ...storeWalletTransactions.map((transaction) => ({
+            id: `store-${transaction.id}`,
+            title: formatTransactionType(transaction.type),
+            description: transaction.description || transaction.referenceId,
+            amount: transaction.amount,
+            createdAt: transaction.createdAt,
+            badge: "Carteira da loja",
+        })),
+    ];
+
+    const paymentMovements: WalletMovement[] = paymentTransactions.map((transaction) => ({
+        id: `payment-${transaction.id}`,
+        title: `Pedido #${(transaction.localOrderId || transaction.orderId).slice(0, 8)}`,
+        description: transaction.failureReason || "Pagamento vinculado a um pedido processado.",
+        amount: transaction.amount,
+        createdAt: transaction.processedAt || transaction.createdAt,
+        badge: "Pagamento",
+        paymentStatus: transaction.status,
+        failureReason: transaction.failureReason,
+    }));
+
+    return [...walletMovements, ...paymentMovements].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function WalletMovementsSection({ isSeller, movements }: { isSeller: boolean; movements: WalletMovement[] }) {
     return (
         <View className="mt-6 rounded-3xl border border-border bg-card p-5">
-            <Text className="text-lg font-black text-card-foreground">{title}</Text>
-            <Text className="mt-1 text-sm text-muted-foreground">{description}</Text>
+            <Text className="text-lg font-black text-card-foreground">Movimentações</Text>
+            <Text className="mt-1 text-sm text-muted-foreground">
+                {isSeller ? "Lista completa com depósitos, recebimentos, liberações de saldo e pagamentos vinculados aos pedidos." : "Lista completa com depósitos, débitos da carteira e pagamentos vinculados aos pedidos."}
+            </Text>
 
             <View className="mt-4 gap-3">
-                {transactions.length > 0 ? (
-                    transactions.map((transaction) => (
-                        <View key={transaction.id} className="rounded-2xl border border-border bg-background p-4">
+                {movements.length > 0 ? (
+                    movements.map((movement) => (
+                        <View key={movement.id} className="rounded-2xl border border-border bg-background p-4">
                             <View className="flex-row items-start justify-between gap-3">
                                 <View className="flex-1">
-                                    <Text className="text-sm font-black text-card-foreground">{formatTransactionType(transaction.type)}</Text>
-                                    <Text className="mt-1 text-sm text-muted-foreground">{transaction.description || transaction.referenceId}</Text>
-                                    <Text className="mt-2 text-xs text-muted-foreground">{formatDateTime(transaction.createdAt)}</Text>
+                                    <View className="flex-row flex-wrap items-center gap-2">
+                                        <Text className="text-sm font-black text-card-foreground">{movement.title}</Text>
+                                        {movement.badge ? <Text className="rounded-xl bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">{movement.badge}</Text> : null}
+                                    </View>
+                                    <Text className="mt-1 text-sm text-muted-foreground">{movement.description}</Text>
+                                    <Text className="mt-2 text-xs text-muted-foreground">{formatDateTime(movement.createdAt)}</Text>
                                 </View>
 
-                                <Text className="text-sm font-black text-card-foreground">{formatCurrency(transaction.amount)}</Text>
+                                <Text className="text-sm font-black text-card-foreground">{formatCurrency(movement.amount)}</Text>
                             </View>
+
+                            {movement.paymentStatus ? (
+                                <View className="mt-3 flex-row flex-wrap gap-2 overflow-hidden">
+                                    <StatusChip label={formatPaymentStatus(movement.paymentStatus)} toneClassName={paymentStatusTone(movement.paymentStatus)} compact />
+                                    {movement.failureReason ? <Text className="rounded-xl bg-red-500/10 px-3 py-2 text-xs font-bold text-red-500">{movement.failureReason}</Text> : null}
+                                </View>
+                            ) : null}
                         </View>
                     ))
                 ) : (
                     <View className="rounded-2xl border border-dashed border-border bg-background p-5">
                         <Text className="text-center text-base font-bold text-card-foreground">Nenhuma movimentação ainda</Text>
-                        <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Assim que houver movimentações nesta carteira, elas aparecerão aqui.</Text>
+                        <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Assim que houver saldo entrando, saindo ou pagamentos processados, eles aparecerão aqui.</Text>
                     </View>
                 )}
             </View>
