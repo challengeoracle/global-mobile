@@ -10,6 +10,7 @@ import { getOrderById } from "@/src/domains/order/services/order-service";
 import { PaymentTransactionModal } from "@/src/domains/payment/components/payment-transaction-modal";
 import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
 import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment";
+import { ProtectedRoute } from "@/src/shared/components/auth/protected-route";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { StatusChip } from "@/src/shared/components/ui/status-chip";
 import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatShortId, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
@@ -34,6 +35,14 @@ function DetailRow({ label, value, subtle = false, selectable = false }: DetailR
 }
 
 export default function OrderDetailsScreen() {
+    return (
+        <ProtectedRoute>
+            <OrderDetailsContent />
+        </ProtectedRoute>
+    );
+}
+
+function OrderDetailsContent() {
     const { orderId } = useLocalSearchParams<{ orderId: string }>();
     const { colorScheme } = useColorScheme();
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
@@ -47,6 +56,7 @@ export default function OrderDetailsScreen() {
     const [paymentLoading, setPaymentLoading] = useState(false);
     const [paymentTransaction, setPaymentTransaction] = useState<PaymentTransactionResponse | null>(null);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+    const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
     const totalItems = items.reduce((total, item) => total + item.quantity, 0);
 
@@ -76,7 +86,9 @@ export default function OrderDetailsScreen() {
         }
 
         try {
-            setLoading(true);
+            if (!hasLoadedOnce) {
+                setLoading(true);
+            }
             setMessage("");
             const localOrder = await hydrateLocalState(orderId);
 
@@ -109,6 +121,9 @@ export default function OrderDetailsScreen() {
                 setMessage(err instanceof Error ? err.message : "Não foi possível atualizar este pedido com o backend.");
             }
         } finally {
+            if (!hasLoadedOnce) {
+                setHasLoadedOnce(true);
+            }
             setLoading(false);
         }
     }

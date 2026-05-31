@@ -54,6 +54,14 @@ function dedupeOrdersById<T extends { id: string }>(orders: T[]) {
     return Array.from(new Map(orders.map((order) => [order.id, order])).values());
 }
 
+async function runWorkspacePreparation(task: Promise<void>) {
+    try {
+        await task;
+    } catch {
+        // We keep the current session available even if the initial remote pull fails.
+    }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<UserResponse | null>(null);
     const [token, setToken] = useState<string | null>(null);
@@ -74,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await saveRemoteOrders(purchases);
     }, []);
 
-    const syncSessionContext = useCallback(async (nextUser: UserResponse) => {
+    const syncSessionContext = useCallback(async (nextUser: UserResponse, options?: { prepareWorkspace?: boolean }) => {
         const previousContext = await getStoredSessionContext();
         const currentContext = buildSessionContext(nextUser);
 
@@ -83,7 +91,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         await saveSessionContext(currentContext);
-        await prepareWorkspaceForUser(nextUser);
+
+        if (options?.prepareWorkspace !== false) {
+            await runWorkspacePreparation(prepareWorkspaceForUser(nextUser));
+        }
     }, [prepareWorkspaceForUser]);
 
     const bootstrap = useCallback(async () => {
@@ -107,7 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 setUser(freshUser);
                 await saveUser(freshUser);
-                await syncSessionContext(freshUser);
+                await syncSessionContext(freshUser, { prepareWorkspace: false });
+                void runWorkspacePreparation(prepareWorkspaceForUser(freshUser));
             } catch {
                 // If the backend is unavailable, we keep the last valid local session.
             }
@@ -119,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
             setLoadingMessage("Preparando seus dados");
         }
-    }, [syncSessionContext]);
+    }, [prepareWorkspaceForUser, syncSessionContext]);
 
     useEffect(() => {
         bootstrap();
@@ -132,18 +144,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             const response = await loginRequest(body);
 
-            await persistAuth(response);
-            await syncSessionContext(response.user);
-
-            setToken(response.token);
             setUser(response.user);
+            setToken(response.token);
+            await persistAuth(response);
+            await syncSessionContext(response.user, { prepareWorkspace: false });
+            void runWorkspacePreparation(prepareWorkspaceForUser(response.user));
 
             router.replace(getHomeRoute(response.user));
         } finally {
             setLoading(false);
             setLoadingMessage("Preparando seus dados");
         }
-    }, [syncSessionContext]);
+    }, [prepareWorkspaceForUser, syncSessionContext]);
 
     const signupSeller = useCallback(async (body: Omit<RegisterSellerRequest, "deviceId">) => {
         setLoading(true);
@@ -157,18 +169,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 deviceId,
             });
 
-            await persistAuth(response);
-            await syncSessionContext(response.user);
-
-            setToken(response.token);
             setUser(response.user);
+            setToken(response.token);
+            await persistAuth(response);
+            await syncSessionContext(response.user, { prepareWorkspace: false });
+            void runWorkspacePreparation(prepareWorkspaceForUser(response.user));
 
             router.replace(getHomeRoute(response.user));
         } finally {
             setLoading(false);
             setLoadingMessage("Preparando seus dados");
         }
-    }, [syncSessionContext]);
+    }, [prepareWorkspaceForUser, syncSessionContext]);
 
     const signupCustomer = useCallback(async (body: RegisterCustomerRequest) => {
         setLoading(true);
@@ -177,18 +189,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             const response = await registerCustomer(body);
 
-            await persistAuth(response);
-            await syncSessionContext(response.user);
-
-            setToken(response.token);
             setUser(response.user);
+            setToken(response.token);
+            await persistAuth(response);
+            await syncSessionContext(response.user, { prepareWorkspace: false });
+            void runWorkspacePreparation(prepareWorkspaceForUser(response.user));
 
             router.replace(getHomeRoute(response.user));
         } finally {
             setLoading(false);
             setLoadingMessage("Preparando seus dados");
         }
-    }, [syncSessionContext]);
+    }, [prepareWorkspaceForUser, syncSessionContext]);
 
     const refreshUser = useCallback(async () => {
         const freshUser = await me();

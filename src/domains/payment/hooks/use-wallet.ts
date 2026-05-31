@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { deposit, getMyPaymentTransactions, getMyPersonalWallet, getMyPersonalWalletTransactions, getMyWallet, getMyWalletTransactions, settleWallet } from "@/src/domains/payment/services/payment-service";
@@ -35,6 +35,7 @@ export function useWallet(): UseWalletState {
     const [depositing, setDepositing] = useState(false);
     const [settling, setSettling] = useState(false);
     const [error, setError] = useState("");
+    const hasLoadedOnceRef = useRef(false);
 
     const fetchAll = useCallback(async () => {
         const [defaultWallet, defaultWalletTxs, paymentTxs, fetchedPersonalWallet, fetchedPersonalWalletTxs] = await Promise.all([
@@ -62,12 +63,15 @@ export function useWallet(): UseWalletState {
 
     const loadWalletData = useCallback(async () => {
         try {
-            setLoading(true);
+            if (!hasLoadedOnceRef.current) {
+                setLoading(true);
+            }
             setError("");
             await fetchAll();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Não foi possível carregar a carteira.");
         } finally {
+            hasLoadedOnceRef.current = true;
             setLoading(false);
         }
     }, [fetchAll]);

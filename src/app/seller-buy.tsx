@@ -13,10 +13,19 @@ import { CartModal } from "@/src/domains/order/components/cart-modal";
 import { OrderConfirmationScannerModal } from "@/src/domains/order/components/order-confirmation-scanner-modal";
 import { OrderQrModal } from "@/src/domains/order/components/order-qr-modal";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
+import { ProtectedRoute } from "@/src/shared/components/auth/protected-route";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { QrScannerModal } from "@/src/shared/components/scanner/qr-scanner-modal";
 
 export default function SellerBuyScreen() {
+    return (
+        <ProtectedRoute>
+            <SellerBuyContent />
+        </ProtectedRoute>
+    );
+}
+
+function SellerBuyContent() {
     const { colorScheme } = useColorScheme();
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
     const catalog = useCatalogScreen();
