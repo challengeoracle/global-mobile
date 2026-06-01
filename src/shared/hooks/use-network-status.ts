@@ -62,7 +62,7 @@ export function useNetworkStatus() {
                 isInternetReachable: connection.isInternetReachable,
                 source: connection.source,
                 type: connection.type,
-                label: "Sem conexÃ£o",
+                label: "Sem conexão",
                 icon: "cloud-offline-outline" as const,
                 color: COLOR_RED,
                 description: "Operando localmente.",
@@ -79,7 +79,7 @@ export function useNetworkStatus() {
                 label: "Wi-Fi",
                 icon: "wifi-outline" as const,
                 color: COLOR_GREEN,
-                description: "SincronizaÃ§Ã£o disponÃ­vel.",
+                description: "Sincronização disponível.",
             };
         }
 
@@ -90,10 +90,10 @@ export function useNetworkStatus() {
                 isInternetReachable: connection.isInternetReachable,
                 source: connection.source,
                 type: connection.type,
-                label: "Rede mÃ³vel",
+                label: "Rede móvel",
                 icon: "phone-portrait-outline" as const,
                 color: COLOR_PURPLE,
-                description: "ConexÃ£o limitada.",
+                description: "Conexão limitada.",
             };
         }
 
@@ -107,7 +107,7 @@ export function useNetworkStatus() {
                 label: "Online",
                 icon: "radio-outline" as const,
                 color: COLOR_GREEN,
-                description: "Servidor disponÃ­vel.",
+                description: "Servidor disponível.",
             };
         }
 
@@ -120,7 +120,7 @@ export function useNetworkStatus() {
             label: "Verificando rede",
             icon: "hourglass-outline" as const,
             color: COLOR_GREEN,
-            description: "Aguardando confirmaÃ§Ã£o da conectividade.",
+            description: "Aguardando confirmação da conectividade.",
         };
     }, [connection]);
 

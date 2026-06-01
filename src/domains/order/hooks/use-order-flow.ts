@@ -1,15 +1,15 @@
 import { randomUUID } from "expo-crypto";
 import { useEffect, useMemo, useState } from "react";
 
+import { CatalogProduct } from "@/src/domains/catalog/types/catalog";
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { createLocalOfflineOrder } from "@/src/domains/order/repositories/order-repository";
-import { countPendingOrderSyncQueue } from "@/src/domains/sync/repositories/sync-queue-repository";
-import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
-import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
-import { CatalogProduct } from "@/src/domains/catalog/types/catalog";
 import { OrderItemRequest } from "@/src/domains/order/types/order";
 import { buildOrderQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
-import { scheduleSync, syncOrders } from "@/src/domains/sync/services/sync-engine";
+import { countPendingOrderSyncQueue } from "@/src/domains/sync/repositories/sync-queue-repository";
+import { scheduleSync, syncAll } from "@/src/domains/sync/services/sync-engine";
+import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
+import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
 
 export type CartItem = {
     product: CatalogProduct;
@@ -205,7 +205,7 @@ export function useOrderFlow(storeId?: string | null) {
         if (!network.canAttemptRemote) {
             const feedback = {
                 ok: false,
-                message: "Sem conexão. Pedidos seguem salvos.",
+                message: "Sem conexão. Pedidos seguem salvos localmente.",
                 pendingAfter: await refreshPendingOrderCount(),
             };
 
@@ -238,23 +238,25 @@ export function useOrderFlow(storeId?: string | null) {
         try {
             setSyncing(true);
 
-            const result = await syncOrders({
+            const result = await syncAll({
                 isConnected: network.canAttemptRemote,
                 canSync: user.role === "SELLER",
+                pullCatalogAfterSync: true,
             });
+            const feedbackMessage = result.orders.rejected > 0 ? result.orders.message : result.catalog.rejected > 0 ? result.catalog.message : result.orders.synced > 0 ? result.orders.message : result.catalog.message;
 
             const pendingAfter = await refreshPendingOrderCount();
 
             if (!silent) {
-                setMessage(result.message);
+                setMessage(feedbackMessage);
             }
 
             return {
                 ok: result.ok,
-                message: result.message,
+                message: feedbackMessage,
                 pendingAfter,
-                synced: result.synced,
-                rejected: result.rejected,
+                synced: result.orders.synced,
+                rejected: result.orders.rejected,
             };
         } catch (err) {
             const fallbackMessage = err instanceof Error ? err.message : "Erro ao sincronizar pedidos.";
@@ -275,7 +277,7 @@ export function useOrderFlow(storeId?: string | null) {
     }
 
     useEffect(() => {
-        refreshPendingOrderCount();
+        void refreshPendingOrderCount();
     }, []);
 
     useEffect(() => {
@@ -283,9 +285,10 @@ export function useOrderFlow(storeId?: string | null) {
         if (user?.role !== "SELLER") return;
 
         scheduleSync({
-            scopes: ["orders"],
+            scopes: ["catalog", "orders"],
             isConnected: network.canAttemptRemote,
             canSync: user.role === "SELLER",
+            pullCatalogAfterSync: true,
             onComplete: async () => {
                 await refreshPendingOrderCount();
             },

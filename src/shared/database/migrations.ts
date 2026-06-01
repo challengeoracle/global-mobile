@@ -388,6 +388,43 @@ async function ensureOrdersTableSchema() {
             ADD COLUMN owner_role TEXT;
         `);
     }
+
+    if (!columns.includes("confirmed_at")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN confirmed_at TEXT;
+        `);
+
+        await db.execAsync(`
+            UPDATE orders
+            SET confirmed_at = COALESCE(confirmed_at, offline_created_at, created_at)
+            WHERE confirmed_at IS NULL
+              AND sync_status IN ('CONFIRMED', 'SELLER_CONFIRMED', 'SYNCED', 'OFFLINE_SYNCED', 'REJECTED');
+        `);
+    }
+
+    if (!columns.includes("server_synced_at")) {
+        await db.execAsync(`
+            ALTER TABLE orders
+            ADD COLUMN server_synced_at TEXT;
+        `);
+
+        await db.execAsync(`
+            UPDATE orders
+            SET server_synced_at = synced_at
+            WHERE server_synced_at IS NULL
+              AND sync_status IN ('SYNCED', 'OFFLINE_SYNCED', 'REJECTED');
+        `);
+    }
+
+    await db.execAsync(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_local_order_id
+        ON orders(local_order_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_remote_order_id
+        ON orders(remote_order_id)
+        WHERE remote_order_id IS NOT NULL;
+    `);
 }
 
 async function ensureCatalogTablesSchema() {
@@ -507,6 +544,8 @@ export async function runMigrations() {
             created_at TEXT NOT NULL,
             updated_at TEXT,
             offline_created_at TEXT,
+            confirmed_at TEXT,
+            server_synced_at TEXT,
             synced_at TEXT,
             owner_user_id TEXT,
             owner_store_id TEXT,

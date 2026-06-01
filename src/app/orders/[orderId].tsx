@@ -13,21 +13,20 @@ import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment"
 import { ProtectedRoute } from "@/src/shared/components/auth/protected-route";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { StatusChip } from "@/src/shared/components/ui/status-chip";
-import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatShortId, formatStoreLabel, formatSyncStatus } from "@/src/shared/lib/formatters";
+import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus, formatSyncTimestampLabel } from "@/src/shared/lib/formatters";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
 type DetailRowProps = {
     label: string;
     value?: string | null;
     subtle?: boolean;
-    selectable?: boolean;
 };
 
-function DetailRow({ label, value, subtle = false, selectable = false }: DetailRowProps) {
+function DetailRow({ label, value, subtle = false }: DetailRowProps) {
     return (
         <View className="flex-row justify-between gap-4 py-2.5">
             <Text className="flex-1 text-sm font-bold text-muted-foreground">{label}</Text>
-            <Text selectable={selectable} className={`max-w-[58%] flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>
+            <Text className={`max-w-[58%] flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>
                 {value || "-"}
             </Text>
         </View>
@@ -89,6 +88,7 @@ function OrderDetailsContent() {
             if (!hasLoadedOnce) {
                 setLoading(true);
             }
+
             setMessage("");
             const localOrder = await hydrateLocalState(orderId);
 
@@ -98,6 +98,7 @@ function OrderDetailsContent() {
 
             try {
                 const remoteOrder = await getOrderById(localOrder.remote_order_id);
+
                 await saveRemoteOrder(remoteOrder);
                 const refreshedLocalOrder = await hydrateLocalState(remoteOrder.id);
 
@@ -114,7 +115,7 @@ function OrderDetailsContent() {
                             await hydrateLocalState(remoteOrder.id);
                         }
                     } catch {
-                        // If the payment transaction is not ready yet, we keep the last persisted snapshot.
+                        // If payment data is not ready yet, we keep the last persisted snapshot.
                     }
                 }
             } catch (err) {
@@ -148,7 +149,7 @@ function OrderDetailsContent() {
 
     useFocusEffect(
         useCallback(() => {
-            loadOrderDetails();
+            void loadOrderDetails();
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [orderId, network.canAttemptRemote]),
     );
@@ -181,7 +182,7 @@ function OrderDetailsContent() {
                         <Ionicons name="arrow-back" size={20} color={iconColor} />
                     </Pressable>
 
-                    <PageHeader eyebrow="Recibo" title={formatStoreLabel(order.store_id)} description="Resumo da compra com itens, pagamento e informações complementares do pedido." />
+                    <PageHeader eyebrow="Recibo" title={formatStoreLabel(order.store_id)} description="Resumo da compra com itens, pagamento e andamento da sincronização." />
 
                     <View className="overflow-hidden rounded-[32px] border border-border bg-card">
                         <View className="border-b border-dashed border-border/80 px-5 py-5">
@@ -202,9 +203,9 @@ function OrderDetailsContent() {
 
                         <View className="px-5 py-4">
                             <View className="flex-row flex-wrap gap-2 overflow-hidden">
-                                <StatusChip label={formatOrderStatus(order.order_status)} toneClassName={orderStatusTone(order.order_status)} />
-                                <StatusChip label={formatPaymentStatus(order.payment_status)} toneClassName={paymentStatusTone(order.payment_status)} />
-                                <StatusChip label={formatSyncStatus(order.sync_status)} toneClassName={syncStatusTone(order.sync_status)} />
+                                <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status)}`} toneClassName={orderStatusTone(order.order_status)} />
+                                <StatusChip label={`Pagamento: ${formatPaymentStatus(order.payment_status)}`} toneClassName={paymentStatusTone(order.payment_status)} />
+                                <StatusChip label={`Sync: ${formatSyncStatus(order.sync_status)}`} toneClassName={syncStatusTone(order.sync_status)} />
                             </View>
                         </View>
                     </View>
@@ -241,21 +242,9 @@ function OrderDetailsContent() {
 
                     <Section title="Pessoas e operação">
                         <DetailRow label="Loja" value={formatStoreLabel(order.store_id)} />
-                        <DetailRow label="Vendedor" value={order.seller_id ? `Identificador ${formatShortId(order.seller_id)}` : "Não informado"} subtle />
-                        <DetailRow label="Cliente" value={order.customer_id ? `Identificador ${formatShortId(order.customer_id)}` : "Não informado"} subtle />
                         <DetailRow label="Criado em" value={formatDateTime(order.created_at)} subtle />
                         <DetailRow label="Registrado offline em" value={formatDateTime(order.offline_created_at)} subtle />
-                        <DetailRow label="Sincronizado em" value={formatDateTime(order.synced_at)} subtle />
-                    </Section>
-
-                    <Section title="Informações técnicas">
-                        <Text className="mb-2 text-sm leading-6 text-muted-foreground">Toque e segure os identificadores se precisar copiar alguma referência para suporte ou conferência.</Text>
-                        <DetailRow label="Pedido remoto" value={order.remote_order_id} subtle selectable />
-                        <DetailRow label="Pedido local" value={order.local_order_id} subtle selectable />
-                        <DetailRow label="Loja ID" value={order.store_id} subtle selectable />
-                        <DetailRow label="Cliente ID" value={order.customer_id} subtle selectable />
-                        <DetailRow label="Vendedor ID" value={order.seller_id} subtle selectable />
-                        <DetailRow label="Device ID" value={order.device_id} subtle selectable />
+                        <DetailRow label={formatSyncTimestampLabel(order.sync_status, order.server_synced_at ?? order.synced_at)} value={formatDateTime(order.server_synced_at ?? order.synced_at)} subtle />
                     </Section>
                 </View>
             </ScrollView>

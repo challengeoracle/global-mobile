@@ -90,6 +90,8 @@ export type InsightAskResponse = {
     answer: string;
     source: string | null;
     model: string | null;
+    sources?: string[];
+    capabilities?: string[];
 };
 
 export type InsightOverview = {

@@ -1,8 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
 import { deposit, getMyPaymentTransactions, getMyPersonalWallet, getMyPersonalWalletTransactions, getMyWallet, getMyWalletTransactions, settleWallet } from "@/src/domains/payment/services/payment-service";
 import { DepositRequest, PaymentTransactionResponse, WalletResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
+import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
 type UseWalletState = {
     storeWallet: WalletResponse | null;
@@ -23,6 +25,7 @@ type UseWalletState = {
 
 export function useWallet(): UseWalletState {
     const { user } = useAuth();
+    const network = useNetworkStatus();
     const isSeller = user?.role === "SELLER";
 
     const [storeWallet, setStoreWallet] = useState<WalletResponse | null>(null);
@@ -37,7 +40,43 @@ export function useWallet(): UseWalletState {
     const [error, setError] = useState("");
     const hasLoadedOnceRef = useRef(false);
 
+    const reconcileLocalOrdersWithPayments = useCallback(async (transactions: PaymentTransactionResponse[]) => {
+        const updates = transactions
+            .map((transaction) => {
+                if (transaction.status === "APPROVED") {
+                    return { remoteOrderId: transaction.orderId, paymentStatus: "PAID" };
+                }
+
+                if (transaction.status === "REJECTED") {
+                    return { remoteOrderId: transaction.orderId, paymentStatus: "REJECTED" };
+                }
+
+                if (transaction.status === "PENDING" && transaction.processedAt) {
+                    return {
+                        remoteOrderId: transaction.orderId,
+                        paymentStatus: transaction.failureReason ? "REJECTED" : "PAID",
+                    };
+                }
+
+                return null;
+            })
+            .filter((item): item is { remoteOrderId: string; paymentStatus: string } => Boolean(item));
+
+        await Promise.all(
+            updates.map((item) =>
+                updateLocalOrderPaymentStatusByRemoteId({
+                    remoteOrderId: item.remoteOrderId,
+                    paymentStatus: item.paymentStatus,
+                }),
+            ),
+        );
+    }, []);
+
     const fetchAll = useCallback(async () => {
+        if (!network.canAttemptRemote) {
+            throw new Error("Sem conexão para consultar a carteira.");
+        }
+
         const [defaultWallet, defaultWalletTxs, paymentTxs, fetchedPersonalWallet, fetchedPersonalWalletTxs] = await Promise.all([
             getMyWallet(),
             getMyWalletTransactions(),
@@ -59,7 +98,8 @@ export function useWallet(): UseWalletState {
         }
 
         setPaymentTransactions(paymentTxs);
-    }, [isSeller]);
+        await reconcileLocalOrdersWithPayments(paymentTxs);
+    }, [isSeller, network.canAttemptRemote, reconcileLocalOrdersWithPayments]);
 
     const loadWalletData = useCallback(async () => {
         try {
@@ -121,7 +161,7 @@ export function useWallet(): UseWalletState {
             }
 
             if (pendingAmount <= 0) {
-                throw new Error("N\u00e3o h\u00e1 saldo pendente dispon\u00edvel para liberar.");
+                throw new Error("Não há saldo pendente disponível para liberar.");
             }
 
             await settleWallet({

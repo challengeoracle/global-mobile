@@ -2,7 +2,7 @@ import { randomUUID } from "expo-crypto";
 
 import { OrderItemRequest, OrderResponse } from "@/src/domains/order/types/order";
 import { OrderConfirmationQrPayload, OrderQrPayload } from "@/src/domains/order/utils/order-qr";
-import { decreaseLocalProductStock, getProductById } from "@/src/domains/catalog/repositories/catalog-repository";
+import { decreaseLocalProductStock, getProductById, increaseLocalProductStock } from "@/src/domains/catalog/repositories/catalog-repository";
 import { enqueueOrderSync } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { db } from "@/src/shared/database/database";
 import { getLocalSessionContext } from "@/src/shared/lib/local-session-context";
@@ -22,6 +22,8 @@ export type LocalOrderRow = {
     created_at: string;
     updated_at: string | null;
     offline_created_at: string | null;
+    confirmed_at: string | null;
+    server_synced_at: string | null;
     synced_at: string | null;
     owner_user_id?: string | null;
     owner_store_id?: string | null;
@@ -57,6 +59,18 @@ function now() {
     return new Date().toISOString();
 }
 
+function getConfirmationTimestamp(order: Pick<LocalOrderRow, "confirmed_at" | "offline_created_at" | "created_at">) {
+    return order.confirmed_at ?? order.offline_created_at ?? order.created_at;
+}
+
+function getServerSyncTimestamp(syncStatus?: string | null, fallback?: string | null) {
+    if (syncStatus === "SYNCED" || syncStatus === "OFFLINE_SYNCED" || syncStatus === "REJECTED") {
+        return fallback ?? now();
+    }
+
+    return null;
+}
+
 function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue | null) {
     if (syncStatus === "REJECTED") {
         return issue?.lastError ?? "O servidor rejeitou este pedido. Revise os dados e tente novamente.";
@@ -66,8 +80,12 @@ function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue |
         return issue.lastError ?? "Não foi possível sincronizar agora. Uma nova tentativa será feita automaticamente.";
     }
 
-    if (syncStatus === "SYNCED" || syncStatus === "OFFLINE_SYNCED") {
+    if (syncStatus === "SYNCED") {
         return "Pedido sincronizado com o servidor.";
+    }
+
+    if (syncStatus === "OFFLINE_SYNCED") {
+        return "Pedido aceito pelo servidor e aguardando atualização final do fluxo.";
     }
 
     if (syncStatus === "SELLER_CONFIRMED") {
@@ -78,7 +96,7 @@ function buildOrderSyncMessage(syncStatus: string, issue?: LocalOrderSyncIssue |
         return "Pedido sincronizado com o servidor.";
     }
 
-    return "Pedido salvo localmente aguardando sincronizacao do vendedor.";
+    return "Pedido salvo localmente aguardando sincronização do vendedor.";
 }
 
 export async function getLocalOrderByLocalId(localOrderId: string) {
@@ -105,6 +123,8 @@ export async function getLocalOrderByLocalId(localOrderId: string) {
             created_at,
             updated_at,
             offline_created_at,
+            confirmed_at,
+            server_synced_at,
             synced_at,
             owner_user_id,
             owner_store_id,
@@ -142,6 +162,8 @@ export async function getLocalOrderByRemoteId(remoteOrderId: string) {
             created_at,
             updated_at,
             offline_created_at,
+            confirmed_at,
+            server_synced_at,
             synced_at,
             owner_user_id,
             owner_store_id,
@@ -179,6 +201,8 @@ export async function getLocalOrderById(orderId: string) {
             created_at,
             updated_at,
             offline_created_at,
+            confirmed_at,
+            server_synced_at,
             synced_at,
             owner_user_id,
             owner_store_id,
@@ -280,13 +304,15 @@ export async function createLocalOfflineOrder(params: {
                 created_at,
                 updated_at,
                 offline_created_at,
+                confirmed_at,
+                server_synced_at,
                 synced_at,
                 owner_user_id,
                 owner_store_id,
                 owner_role
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.remoteOrderId ? createdAt : null, context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.confirmedBySeller ? offlineCreatedAt : null, getServerSyncTimestamp(params.syncStatus, createdAt), getServerSyncTimestamp(params.syncStatus, createdAt), context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
         );
 
         for (const item of params.items) {
@@ -390,10 +416,12 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
                 payment_status = ?,
                 sync_status = ?,
                 updated_at = ?,
+                confirmed_at = COALESCE(confirmed_at, ?),
+                server_synced_at = COALESCE(?, server_synced_at),
                 synced_at = ?
             WHERE local_order_id = ?
             `,
-            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.syncStatus, params.payload.confirmedAt, params.payload.confirmedAt, params.payload.localOrderId],
+            [params.payload.remoteOrderId ?? null, params.payload.sellerId ?? null, params.payload.orderStatus, params.payload.paymentStatus, params.payload.syncStatus, params.payload.confirmedAt, params.payload.confirmedAt, params.payload.remoteOrderId ? params.payload.confirmedAt : null, params.payload.remoteOrderId ? params.payload.confirmedAt : null, params.payload.localOrderId],
         );
 
         return {
@@ -422,6 +450,12 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
 }
 
 export async function getOrderSyncIssue(localOrderId: string) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
     return db.getFirstAsync<LocalOrderSyncIssue>(
         `
         SELECT
@@ -431,10 +465,13 @@ export async function getOrderSyncIssue(localOrderId: string) {
             updated_at AS updatedAt
         FROM order_sync_queue
         WHERE operation_id = ?
+          AND owner_role = 'SELLER'
+          AND ? IS NOT NULL
+          AND owner_store_id = ?
         ORDER BY updated_at DESC
         LIMIT 1
         `,
-        [localOrderId],
+        [localOrderId, context.storeId, context.storeId],
     );
 }
 
@@ -445,7 +482,7 @@ export async function getLocalOrders() {
         return [];
     }
 
-    return db.getAllAsync<LocalOrderRow>(`
+    const rows = await db.getAllAsync<LocalOrderRow>(`
         SELECT
             id,
             remote_order_id,
@@ -461,6 +498,8 @@ export async function getLocalOrders() {
             created_at,
             updated_at,
             offline_created_at,
+            confirmed_at,
+            server_synced_at,
             synced_at,
             owner_user_id,
             owner_store_id,
@@ -470,6 +509,8 @@ export async function getLocalOrders() {
            OR (? IS NOT NULL AND owner_store_id = ?)
         ORDER BY COALESCE(updated_at, created_at) DESC
     `, [context.userId, context.storeId, context.storeId]);
+
+    return rows;
 }
 
 export async function getPendingLocalOrders() {
@@ -495,6 +536,8 @@ export async function getPendingLocalOrders() {
             created_at,
             updated_at,
             offline_created_at,
+            confirmed_at,
+            server_synced_at,
             synced_at,
             owner_user_id,
             owner_store_id,
@@ -565,7 +608,7 @@ export async function buildOrderConfirmationPayloadFromLocal(localOrderId: strin
         sellerId: order.seller_id,
         sellerDeviceId: order.device_id,
         remoteOrderId: order.remote_order_id,
-        confirmedAt: order.synced_at ?? order.created_at,
+        confirmedAt: getConfirmationTimestamp(order),
         totalAmount: order.total_amount,
         orderStatus: order.order_status,
         paymentStatus: order.payment_status,
@@ -588,10 +631,11 @@ export async function markOrderSynced(params: { localOrderId: string; remoteOrde
             order_status = COALESCE(?, order_status),
             sync_status = ?,
             updated_at = ?,
+            server_synced_at = ?,
             synced_at = ?
         WHERE local_order_id = ?
         `,
-        [params.remoteOrderId ?? null, params.paymentStatus ?? null, params.orderStatus ?? null, params.syncStatus ?? "SYNCED", now(), now(), params.localOrderId],
+        [params.remoteOrderId ?? null, params.paymentStatus ?? null, params.orderStatus ?? null, params.syncStatus ?? "SYNCED", now(), now(), now(), params.localOrderId],
     );
 }
 
@@ -601,11 +645,26 @@ export async function markOrderRejected(params: { localOrderId: string; message?
         UPDATE orders
         SET sync_status = ?,
             updated_at = ?,
+            server_synced_at = ?,
             synced_at = ?
         WHERE local_order_id = ?
         `,
-        ["REJECTED", now(), now(), params.localOrderId],
+        ["REJECTED", now(), now(), now(), params.localOrderId],
     );
+}
+
+export async function restoreLocalStockForRejectedOrder(localOrderId: string) {
+    const order = await getLocalOrderByLocalId(localOrderId);
+
+    if (!order || order.sync_status === "REJECTED") {
+        return;
+    }
+
+    const items = await getLocalOrderItems(order.id);
+
+    for (const item of items) {
+        await increaseLocalProductStock(item.product_id, item.quantity);
+    }
 }
 
 export async function saveRemoteOrder(order: OrderResponse) {
@@ -617,6 +676,8 @@ export async function saveRemoteOrder(order: OrderResponse) {
         const targetOrderId = existingOrder?.id ?? order.id;
         const targetLocalOrderId = order.localOrderId ?? existingOrder?.local_order_id ?? order.id;
         const persistedUpdatedAt = order.updatedAt ?? order.createdAt ?? now();
+        const confirmedAt = existingOrder?.confirmed_at ?? order.offlineCreatedAt ?? order.createdAt;
+        const serverSyncedAt = getServerSyncTimestamp(order.syncStatus, persistedUpdatedAt);
 
         await db.runAsync(
             `
@@ -635,13 +696,15 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 created_at,
                 updated_at,
                 offline_created_at,
+                confirmed_at,
+                server_synced_at,
                 synced_at,
                 owner_user_id,
                 owner_store_id,
                 owner_role
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, now(), context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, confirmedAt, serverSyncedAt, serverSyncedAt ?? persistedUpdatedAt, context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
         );
 
         if (!order.items?.length) {

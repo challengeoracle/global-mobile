@@ -1,5 +1,15 @@
 import type { SyncItemStateResponse } from "@/src/domains/catalog/types/catalog";
 
+export type PageResponse<T> = {
+    content: T[];
+    page: number;
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    first: boolean;
+    last: boolean;
+};
+
 export type OrderItemRequest = {
     productId: string;
     quantity: number;

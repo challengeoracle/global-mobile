@@ -146,8 +146,10 @@ function getReadyQueueQuery(tableName: "catalog_sync_queue" | "order_sync_queue"
             owner_store_id,
             owner_role
         FROM ${tableName}
-        WHERE status IN ('PENDING', 'SYNCING')
-           OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+        WHERE (
+            status IN ('PENDING', 'SYNCING')
+            OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+        )
           AND (
             owner_user_id = ?
             OR (? IS NOT NULL AND owner_store_id = ?)
@@ -411,7 +413,37 @@ export async function getPendingOrderSyncQueue() {
         return [];
     }
 
-    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("order_sync_queue"), [now(), context.userId, context.storeId, context.storeId]);
+    const rows = await db.getAllAsync<SyncQueueRow>(
+        `
+        SELECT
+            id,
+            operation_id,
+            entity_type,
+            operation_type,
+            payload_json,
+            status,
+            attempts,
+            last_error,
+            created_at,
+            updated_at,
+            synced_at,
+            next_retry_at,
+            owner_user_id,
+            owner_store_id,
+            owner_role
+        FROM order_sync_queue
+        WHERE (
+            status IN ('PENDING', 'SYNCING')
+            OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+        )
+          AND owner_role = 'SELLER'
+          AND ? IS NOT NULL
+          AND owner_store_id = ?
+        ORDER BY created_at ASC
+        `,
+        [now(), context.storeId, context.storeId],
+    );
+
     return rows.map(parseOrderRow);
 }
 
@@ -422,7 +454,17 @@ export async function countPendingOrderSyncQueue() {
         return 0;
     }
 
-    const row = await db.getFirstAsync<CountRow>(getPendingCountQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
+    const row = await db.getFirstAsync<CountRow>(
+        `
+        SELECT COUNT(*) AS total
+        FROM order_sync_queue
+        WHERE status IN ('PENDING', 'FAILED', 'SYNCING')
+          AND owner_role = 'SELLER'
+          AND ? IS NOT NULL
+          AND owner_store_id = ?
+        `,
+        [context.storeId, context.storeId],
+    );
     return row?.total ?? 0;
 }
 
@@ -437,7 +479,17 @@ export async function countRejectedOrderSyncQueue() {
         return 0;
     }
 
-    const row = await db.getFirstAsync<CountRow>(getRejectedCountQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
+    const row = await db.getFirstAsync<CountRow>(
+        `
+        SELECT COUNT(*) AS total
+        FROM order_sync_queue
+        WHERE status = 'REJECTED'
+          AND owner_role = 'SELLER'
+          AND ? IS NOT NULL
+          AND owner_store_id = ?
+        `,
+        [context.storeId, context.storeId],
+    );
     return row?.total ?? 0;
 }
 
@@ -452,7 +504,20 @@ export async function getLatestOrderQueueError() {
         return null;
     }
 
-    return db.getFirstAsync<ErrorRow>(getLatestErrorQuery("order_sync_queue"), [context.userId, context.storeId, context.storeId]);
+    return db.getFirstAsync<ErrorRow>(
+        `
+        SELECT last_error, updated_at
+        FROM order_sync_queue
+        WHERE status IN ('FAILED', 'REJECTED')
+          AND last_error IS NOT NULL
+          AND owner_role = 'SELLER'
+          AND ? IS NOT NULL
+          AND owner_store_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+        `,
+        [context.storeId, context.storeId],
+    );
 }
 
 export async function markOrderQueueSyncing(queueIds: string[]) {

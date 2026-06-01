@@ -1,5 +1,27 @@
-import { DepositRequest, PaymentTransactionResponse, SettleWalletRequest, WalletResponse, WalletSettleResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
+import { DepositRequest, PageResponse, PaymentTransactionResponse, SettleWalletRequest, WalletResponse, WalletSettleResponse, WalletTransactionResponse } from "@/src/domains/payment/types/payment";
 import { paymentRequest } from "@/src/shared/lib/api";
+
+const DEFAULT_PAGE_SIZE = 50;
+
+async function fetchPagedResults<T>(path: string, size = DEFAULT_PAGE_SIZE) {
+    const results: T[] = [];
+    let page = 0;
+
+    while (true) {
+        const response = await paymentRequest<PageResponse<T>>(`${path}?page=${page}&size=${size}`, {
+            auth: true,
+        });
+        results.push(...response.content);
+
+        if (response.last || response.totalPages <= page + 1) {
+            break;
+        }
+
+        page += 1;
+    }
+
+    return results;
+}
 
 export function getMyWallet() {
     return paymentRequest<WalletResponse>("/wallet/me", {
@@ -22,15 +44,11 @@ export function deposit(body: DepositRequest) {
 }
 
 export function getMyWalletTransactions() {
-    return paymentRequest<WalletTransactionResponse[]>("/wallet/transactions/me", {
-        auth: true,
-    });
+    return fetchPagedResults<WalletTransactionResponse>("/wallet/transactions/me/page");
 }
 
 export function getMyPersonalWalletTransactions() {
-    return paymentRequest<WalletTransactionResponse[]>("/wallet/transactions/personal/me", {
-        auth: true,
-    });
+    return fetchPagedResults<WalletTransactionResponse>("/wallet/transactions/personal/me/page");
 }
 
 export function settleWallet(body: SettleWalletRequest) {
@@ -42,9 +60,7 @@ export function settleWallet(body: SettleWalletRequest) {
 }
 
 export function getMyPaymentTransactions() {
-    return paymentRequest<PaymentTransactionResponse[]>("/payment/transactions/me", {
-        auth: true,
-    });
+    return fetchPagedResults<PaymentTransactionResponse>("/payment/transactions/me/page");
 }
 
 export function getPaymentTransactionByOrderId(orderId: string) {

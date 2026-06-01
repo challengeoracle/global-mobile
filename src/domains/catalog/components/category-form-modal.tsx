@@ -5,6 +5,9 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { CatalogCategory } from "@/src/domains/catalog/types/catalog";
 import { BottomSheetModal } from "@/src/shared/components/ui/bottom-sheet-modal";
 
+const CATEGORY_NAME_MAX_LENGTH = 100;
+const CATEGORY_DESCRIPTION_MAX_LENGTH = 255;
+
 export type CategoryFormValues = {
     name: string;
     description: string;
@@ -47,6 +50,16 @@ export function CategoryFormModal({ visible, mode, initialCategory, onClose, onS
                 return;
             }
 
+            if (name.trim().length > CATEGORY_NAME_MAX_LENGTH) {
+                setError("O nome da categoria pode ter no maximo 100 caracteres.");
+                return;
+            }
+
+            if (description.trim().length > CATEGORY_DESCRIPTION_MAX_LENGTH) {
+                setError("A descricao pode ter no maximo 255 caracteres.");
+                return;
+            }
+
             await onSubmit({
                 name: name.trim(),
                 description: description.trim(),
@@ -67,13 +80,13 @@ export function CategoryFormModal({ visible, mode, initialCategory, onClose, onS
                     <View>
                         <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Nome</Text>
 
-                        <TextInput value={name} onChangeText={setName} placeholder="Ex: Bebidas" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                        <TextInput value={name} onChangeText={setName} maxLength={CATEGORY_NAME_MAX_LENGTH} placeholder="Ex: Bebidas" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                     </View>
 
                     <View>
-                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descrição</Text>
+                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descricao</Text>
 
-                        <TextInput value={description} onChangeText={setDescription} placeholder="Descrição curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                        <TextInput value={description} onChangeText={setDescription} maxLength={CATEGORY_DESCRIPTION_MAX_LENGTH} placeholder="Descricao curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                     </View>
 
                     {error ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{error}</Text> : null}

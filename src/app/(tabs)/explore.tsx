@@ -47,8 +47,8 @@ export default function ExploreScreen() {
                     <View className="gap-3">
                         <FlowCard icon="wifi-outline" color={COLOR_GREEN} title="Cliente online + vendedor online" description="Fluxo normal. Pedido, pagamento, validação e atualização da carteira acontecem na hora." />
                         <FlowCard icon="cloud-offline-outline" color={COLOR_RED} title="Cliente offline + vendedor offline" description="O pedido e a venda ficam pendentes. Ninguém paga nem recebe na hora. Tudo será validado quando a conexão voltar." />
-                        <FlowCard icon="phone-portrait-outline" color={COLOR_PURPLE} title="Cliente online + vendedor offline" description="O cliente pode pagar online. O vendedor salva a venda localmente e sincroniza depois para confirmar o recebimento." />
-                        <FlowCard icon="qr-code-outline" color={COLOR_ORANGE} title="Cliente offline + vendedor online" description="O vendedor registra a venda no backend, mas o pagamento pode ficar pendente até o cliente recuperar conexão." />
+                        <FlowCard icon="phone-portrait-outline" color={COLOR_PURPLE} title="Cliente online + vendedor offline" description="O cliente monta o pedido e o vendedor salva a venda localmente. O pagamento so e validado quando a venda chega ao backend na sincronizacao." />
+                        <FlowCard icon="qr-code-outline" color={COLOR_ORANGE} title="Cliente offline + vendedor online" description="O vendedor pode confirmar o pedido com QR, mas o status financeiro continua pendente ate o pedido ser validado e o pagamento ser processado pelos servicos centrais." />
                     </View>
                 </View>
 

@@ -100,10 +100,10 @@ export function useSyncStatus(scope: SyncScope = "all") {
     }, [canSync, network.isConnected, refresh, scope]);
 
     useEffect(() => {
-        refresh();
+        void refresh();
 
         const interval = setInterval(() => {
-            refresh();
+            void refresh();
         }, 2000);
 
         return () => clearInterval(interval);

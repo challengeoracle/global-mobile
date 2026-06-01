@@ -56,11 +56,28 @@ export function formatOrderStatus(status?: string | null) {
 
 export function formatSyncStatus(status?: string | null) {
     if (!status || status === "PENDING" || status === "PENDING_SYNC") return "Pendente de sincronização";
-    if (status === "SYNCED" || status === "OFFLINE_SYNCED") return "Sincronizado";
+    if (status === "SYNCED") return "Sincronizado";
+    if (status === "OFFLINE_SYNCED") return "Aceito pelo servidor";
     if (status === "SELLER_CONFIRMED") return "Confirmado e aguardando sincronização";
     if (status === "FAILED") return "Falha na sincronização";
     if (status === "REJECTED") return "Rejeitado";
     return "Em processamento";
+}
+
+export function formatSyncTimestampLabel(status?: string | null, syncedAt?: string | null) {
+    if (!syncedAt) {
+        return "Última atualização";
+    }
+
+    if (status === "SYNCED" || status === "OFFLINE_SYNCED") {
+        return "Aceito pelo servidor em";
+    }
+
+    if (status === "REJECTED") {
+        return "Revisado em";
+    }
+
+    return "Atualizado em";
 }
 
 export function formatTransactionType(type?: string | null) {

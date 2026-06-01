@@ -245,7 +245,7 @@ export default function OrdersScreen() {
                         <View className="mt-4 flex-row flex-wrap gap-2">
                             <MutedPill label={`${totals.pending} pendente(s)`} />
                             <MutedPill label={`${totals.confirmed} confirmado(s)`} />
-                            <MutedPill label={`${totals.synced} sincronizado(s)`} />
+                            <MutedPill label={`${totals.synced} aceito(s) pelo servidor`} />
                             <MutedPill label={`${totals.rejected} com problema`} />
                         </View>
 
@@ -312,9 +312,9 @@ function ReceiptCard({ order }: { order: LocalOrderRow }) {
 
             <View className="gap-4 px-5 py-4">
                 <View className="flex-row flex-wrap gap-2 overflow-hidden">
-                    <StatusChip label={formatOrderStatus(order.order_status)} toneClassName={orderStatusTone(order.order_status)} />
-                    <StatusChip label={formatPaymentStatus(order.payment_status)} toneClassName={paymentStatusTone(order.payment_status)} />
-                    <StatusChip label={formatSyncStatus(order.sync_status)} toneClassName={syncStatusTone(order.sync_status)} />
+                    <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status)}`} toneClassName={orderStatusTone(order.order_status)} />
+                    <StatusChip label={`Pagamento: ${formatPaymentStatus(order.payment_status)}`} toneClassName={paymentStatusTone(order.payment_status)} />
+                    <StatusChip label={`Sync: ${formatSyncStatus(order.sync_status)}`} toneClassName={syncStatusTone(order.sync_status)} />
                 </View>
 
                 <View className="flex-row flex-wrap items-center justify-between gap-2">

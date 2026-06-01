@@ -46,9 +46,9 @@ export default function LoginScreen() {
                 <AuthHeader title="Entrar" description="Entre na sua conta para iniciar a operação." />
 
                 <View className="gap-5">
-                    <FormInput control={control} name="email" label="Email" placeholder="email@exemplo.com" keyboardType="email-address" />
+                    <FormInput control={control} name="email" label="Email" placeholder="email@exemplo.com" keyboardType="email-address" maxLength={255} />
 
-                    <FormPasswordInput control={control} name="password" label="Senha" placeholder="Sua senha" />
+                    <FormPasswordInput control={control} name="password" label="Senha" placeholder="Sua senha" maxLength={72} />
 
                     {serverError ? (
                         <View className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4">

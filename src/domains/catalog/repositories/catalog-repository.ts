@@ -31,7 +31,23 @@ type TableInfoRow = {
 type CatalogSyncQueuePayloadRow = {
     id: string;
     payload_json: string;
+    last_error?: string | null;
 };
+
+type QueuePayloadWithItems = {
+    localOrderId?: string;
+    items?: {
+        productId?: string;
+    }[];
+};
+
+function isProductNotFoundMessage(message?: string | null) {
+    if (!message) {
+        return false;
+    }
+
+    return message.toLowerCase().includes("product not found");
+}
 
 function toBoolean(value: number) {
     return value === 1;
@@ -322,6 +338,24 @@ export async function upsertLocalProduct(params: { id: string; categoryId: strin
     );
 }
 
+export async function increaseLocalProductStock(productId: string, quantity: number) {
+    const product = await getProductById(productId);
+
+    if (!product) {
+        return;
+    }
+
+    await db.runAsync(
+        `
+        UPDATE products
+        SET stock_quantity = stock_quantity + ?,
+            updated_at = ?
+        WHERE id = ?
+        `,
+        [quantity, new Date().toISOString(), productId],
+    );
+}
+
 export async function createLocalProduct(params: { categoryId: string; storeId: string; name: string; description?: string | null; price: number; stockQuantity: number }) {
     const productId = randomUUID();
     const now = new Date().toISOString();
@@ -599,4 +633,131 @@ export async function normalizeLegacyCatalogIds() {
     } catch {
         // Legacy queue normalization is best-effort and should not block the catalog.
     }
+}
+
+export async function reconcileProductIdReference(localProductId: string, remoteProductId: string) {
+    if (!localProductId || !remoteProductId || localProductId === remoteProductId) {
+        return;
+    }
+
+    await db.withTransactionAsync(async () => {
+        const orderIdsToRequeue = new Set<string>();
+
+        await db.runAsync(
+            `
+            UPDATE products
+            SET id = ?
+            WHERE id = ?
+            `,
+            [remoteProductId, localProductId],
+        );
+
+        await db.runAsync(
+            `
+            UPDATE order_items
+            SET product_id = ?
+            WHERE product_id = ?
+            `,
+            [remoteProductId, localProductId],
+        );
+
+        const catalogQueueRows = await db.getAllAsync<CatalogSyncQueuePayloadRow>(
+            `
+            SELECT id, payload_json
+            FROM catalog_sync_queue
+            WHERE payload_json LIKE ?
+            `,
+            [`%${localProductId}%`],
+        );
+
+        for (const row of catalogQueueRows) {
+            const payload = JSON.parse(row.payload_json) as { productId?: string };
+
+            if (payload.productId !== localProductId) {
+                continue;
+            }
+
+            await db.runAsync(
+                `
+                UPDATE catalog_sync_queue
+                SET payload_json = ?
+                WHERE id = ?
+                `,
+                [JSON.stringify({ ...payload, productId: remoteProductId }), row.id],
+            );
+        }
+
+        const orderQueueRows = await db.getAllAsync<CatalogSyncQueuePayloadRow>(
+            `
+            SELECT id, payload_json, last_error
+            FROM order_sync_queue
+            WHERE payload_json LIKE ?
+            `,
+            [`%${localProductId}%`],
+        );
+
+        for (const row of orderQueueRows) {
+            const payload = JSON.parse(row.payload_json) as QueuePayloadWithItems;
+
+            if (!payload.items?.some((item) => item.productId === localProductId)) {
+                continue;
+            }
+
+            if (payload.localOrderId && isProductNotFoundMessage(row.last_error)) {
+                orderIdsToRequeue.add(payload.localOrderId);
+            }
+
+            await db.runAsync(
+                `
+                UPDATE order_sync_queue
+                SET payload_json = ?
+                WHERE id = ?
+                `,
+                [
+                    JSON.stringify({
+                        ...payload,
+                        items: payload.items.map((item) => ({
+                            ...item,
+                            productId: item.productId === localProductId ? remoteProductId : item.productId,
+                        })),
+                    }),
+                    row.id,
+                ],
+            );
+        }
+
+        if (orderIdsToRequeue.size > 0) {
+            const placeholders = Array.from(orderIdsToRequeue).map(() => "?").join(", ");
+            const timestamp = new Date().toISOString();
+            const params = Array.from(orderIdsToRequeue);
+
+            await db.runAsync(
+                `
+                UPDATE order_sync_queue
+                SET status = 'PENDING',
+                    attempts = 0,
+                    last_error = NULL,
+                    next_retry_at = NULL,
+                    synced_at = NULL,
+                    updated_at = ?
+                WHERE operation_id IN (${placeholders})
+                  AND status = 'REJECTED'
+                `,
+                [timestamp, ...params],
+            );
+
+            await db.runAsync(
+                `
+                UPDATE orders
+                SET sync_status = 'PENDING',
+                    updated_at = ?,
+                    server_synced_at = NULL,
+                    synced_at = NULL
+                WHERE local_order_id IN (${placeholders})
+                  AND sync_status = 'REJECTED'
+                `,
+                [timestamp, ...params],
+            );
+        }
+    });
 }

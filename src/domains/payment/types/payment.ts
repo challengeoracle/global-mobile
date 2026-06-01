@@ -1,5 +1,15 @@
 export type WalletOwnerType = "CUSTOMER" | "STORE";
 
+export type PageResponse<T> = {
+    content: T[];
+    page: number;
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    first: boolean;
+    last: boolean;
+};
+
 export type WalletTransactionType = "DEPOSIT" | "PAYMENT_DEBIT" | "PAYMENT_CREDIT" | "SETTLEMENT";
 
 export type PaymentTransactionStatus = "PENDING" | "APPROVED" | "REJECTED";

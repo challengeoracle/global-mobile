@@ -1,5 +1,31 @@
-import { CreateOrderRequest, OrderResponse } from "@/src/domains/order/types/order";
+import { CreateOrderRequest, OrderResponse, PageResponse } from "@/src/domains/order/types/order";
 import { salesRequest } from "@/src/shared/lib/api";
+
+const DEFAULT_PAGE_SIZE = 50;
+
+async function fetchOrderPage(path: string, page: number, size = DEFAULT_PAGE_SIZE) {
+    return salesRequest<PageResponse<OrderResponse>>(`${path}?page=${page}&size=${size}`, {
+        auth: true,
+    });
+}
+
+async function fetchAllOrderPages(path: string, size = DEFAULT_PAGE_SIZE) {
+    const orders: OrderResponse[] = [];
+    let page = 0;
+
+    while (true) {
+        const response = await fetchOrderPage(path, page, size);
+        orders.push(...response.content);
+
+        if (response.last || response.totalPages <= page + 1) {
+            break;
+        }
+
+        page += 1;
+    }
+
+    return orders;
+}
 
 export async function createOrder(body: CreateOrderRequest) {
     return salesRequest<OrderResponse>("/order", {
@@ -10,21 +36,15 @@ export async function createOrder(body: CreateOrderRequest) {
 }
 
 export async function getMyOrders() {
-    return salesRequest<OrderResponse[]>("/order/me", {
-        auth: true,
-    });
+    return fetchAllOrderPages("/order/me/page");
 }
 
 export async function getMySales() {
-    return salesRequest<OrderResponse[]>("/order/me/sales", {
-        auth: true,
-    });
+    return fetchAllOrderPages("/order/me/sales/page");
 }
 
 export async function getMyPurchases() {
-    return salesRequest<OrderResponse[]>("/order/me/purchases", {
-        auth: true,
-    });
+    return fetchAllOrderPages("/order/me/purchases/page");
 }
 
 export async function getOrderById(orderId: string) {

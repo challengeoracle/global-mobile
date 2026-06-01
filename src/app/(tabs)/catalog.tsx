@@ -202,6 +202,10 @@ export default function CatalogScreen() {
             synced = false;
         }
 
+        if (!synced) {
+            return;
+        }
+
         await openSellerConfirmationQr(localOrderId, synced);
     }
 
