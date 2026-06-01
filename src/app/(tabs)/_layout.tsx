@@ -32,7 +32,8 @@ export default function TabLayout() {
     }
 
     const createTabBarIcon = (name: IconName) => {
-        const IconComponent = ({ color, size }: { color: string; size: number }) => <Ionicons name={name} color={color} size={Math.max(16, size - 3)} />;
+        const IconComponent = ({ color, size }: { color: string; size: number }) => <Ionicons name={name} color={color} size={Math.max(18, size - 1)} />;
+
         IconComponent.displayName = `TabBarIcon(${name})`;
         return IconComponent;
     };
@@ -43,28 +44,30 @@ export default function TabLayout() {
                 headerShown: false,
                 tabBarActiveTintColor: isDark ? DARK_ACTIVE : LIGHT_ACTIVE,
                 tabBarInactiveTintColor: isDark ? DARK_INACTIVE : LIGHT_INACTIVE,
-                tabBarIconStyle: {
-                    marginBottom: 2,
-                },
+                tabBarShowLabel: true,
                 tabBarLabelPosition: "below-icon",
                 tabBarLabelStyle: {
                     fontSize: 10,
-                    fontWeight: "700",
-                    letterSpacing: 0.2,
+                    fontWeight: "600",
+                    marginTop: 2,
+                },
+                tabBarIconStyle: {
+                    marginBottom: 0,
                 },
                 tabBarStyle: {
-                    height: 68 + insets.bottom,
-                    paddingBottom: insets.bottom + 8,
-                    paddingTop: 6,
-                    paddingHorizontal: 8,
+                    height: 64 + insets.bottom,
+                    paddingBottom: insets.bottom + 7,
+                    paddingTop: 7,
+                    paddingHorizontal: 4,
                     backgroundColor: isDark ? "#09090b" : "#ffffff",
                     borderTopWidth: 1,
                     borderTopColor: isDark ? "#27272a" : "#e4e4e7",
                 },
                 tabBarItemStyle: {
                     paddingVertical: 2,
-                    paddingHorizontal: 2,
+                    paddingHorizontal: 1,
                 },
+                tabBarHideOnKeyboard: true,
             }}
         >
             <Tabs.Screen
@@ -86,7 +89,7 @@ export default function TabLayout() {
                 name="catalog"
                 options={{
                     title: "Catálogo",
-                    tabBarIcon: createTabBarIcon("book-outline"),
+                    tabBarIcon: createTabBarIcon("storefront-outline"),
                 }}
             />
 
@@ -107,9 +110,17 @@ export default function TabLayout() {
             />
 
             <Tabs.Screen
+                name="insights"
+                options={{
+                    title: "Insights",
+                    tabBarIcon: createTabBarIcon("analytics-outline"),
+                }}
+            />
+
+            <Tabs.Screen
                 name="settings"
                 options={{
-                    title: "Configurações",
+                    title: "Ajustes",
                     tabBarIcon: createTabBarIcon("settings-outline"),
                 }}
             />

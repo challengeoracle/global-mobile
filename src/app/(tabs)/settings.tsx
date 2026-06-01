@@ -3,20 +3,23 @@ import { useColorScheme } from "nativewind";
 import { Alert, ScrollView, Text, View } from "react-native";
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { ConnectionStatusCard } from "@/src/shared/components/home/connection-status-card";
+import { OfflineStatusCard } from "@/src/shared/components/home/offline-status-card";
 import { AccountCard } from "@/src/shared/components/settings/account-card";
 import { SettingsItem } from "@/src/shared/components/settings/settings-item";
 import { SettingsDivider, SettingsSection } from "@/src/shared/components/settings/settings-section";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
+import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 
 export default function SettingsScreen() {
     const { user, logout } = useAuth();
     const { colorScheme, toggleColorScheme } = useColorScheme();
     const syncStatus = useSyncStatus("all");
+    const networkInfo = useNetworkStatus();
 
     const isDark = colorScheme === "dark";
-    const isSeller = user?.role === "SELLER";
 
     function handleLogout() {
         Alert.alert("Sair da conta", "Fazer logout neste aparelho descarta todas as alterações locais e pedidos pendentes que ainda não foram sincronizados. Deseja continuar?", [
@@ -44,7 +47,7 @@ export default function SettingsScreen() {
                 <View className="mb-6">
                     <SyncStatusCard
                         variant="detailed"
-                        title={isSeller ? "Estado local e sincronização" : "Estado local"}
+                        title="Status do sistema"
                         onlineLabel={syncStatus.network.isConnected ? "Online" : "Offline"}
                         onlineColor={syncStatus.network.color}
                         isConnected={syncStatus.network.isConnected}
@@ -58,6 +61,11 @@ export default function SettingsScreen() {
                         lastSyncAt={syncStatus.lastSyncAt}
                         lastError={syncStatus.scopedLastError}
                     />
+                </View>
+
+                <View className="mb-6 flex-row gap-3">
+                    <ConnectionStatusCard networkInfo={networkInfo} />
+                    <OfflineStatusCard title="Modo offline" />
                 </View>
 
                 <SettingsSection>

@@ -4,13 +4,10 @@ import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { CustomerHome } from "@/src/shared/components/home/customer-home";
 import { SellerHome } from "@/src/shared/components/home/seller-home";
 import { SyncStatusCard } from "@/src/shared/components/sync/sync-status-card";
-import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 import { useSyncStatus } from "@/src/shared/hooks/use-sync-status";
 
 export default function HomeScreen() {
     const { user } = useAuth();
-
-    const networkInfo = useNetworkStatus();
     const syncStatus = useSyncStatus("all");
 
     return (
@@ -27,7 +24,7 @@ export default function HomeScreen() {
                     pendingLabel="registro(s) aguardando envio"
                 />
 
-                <View className="mt-6">{user?.role === "SELLER" ? <SellerHome user={user} networkInfo={networkInfo} /> : <CustomerHome user={user} networkInfo={networkInfo} />}</View>
+                <View className="mt-6">{user?.role === "SELLER" ? <SellerHome user={user} /> : <CustomerHome user={user} />}</View>
             </View>
         </ScrollView>
     );

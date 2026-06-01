@@ -3,7 +3,7 @@ import { StatusCard } from "./status-card";
 type ConnectionStatusCardProps = {
     networkInfo: {
         label: string;
-        icon: "cloud-offline-outline" | "wifi-outline" | "phone-portrait-outline" | "radio-outline";
+        icon: "cloud-offline-outline" | "wifi-outline" | "phone-portrait-outline" | "radio-outline" | "hourglass-outline";
         color: string;
         description: string;
     };
