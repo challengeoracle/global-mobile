@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { useOrderFlow } from "@/src/domains/order/hooks/use-order-flow";
-import { getLocalOrderItems, getLocalOrders, getOrderSyncIssue, LocalOrderRow, saveRemoteOrders, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
+import { LocalOrderRow, getLocalOrderItems, getLocalOrders, getOrderSyncIssue, saveRemoteOrders, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
 import { getMyOrders, getMyPurchases, getMySales, getOrdersByCustomer } from "@/src/domains/order/services/order-service";
 import { OrderResponse } from "@/src/domains/order/types/order";
 import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
@@ -312,15 +312,12 @@ function ReceiptCard({ order }: { order: LocalOrderRow }) {
 
             <View className="gap-4 px-5 py-4">
                 <View className="flex-row flex-wrap gap-2 overflow-hidden">
-                    <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status)}`} toneClassName={orderStatusTone(order.order_status)} />
+                    <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status, order.payment_status, order.sync_status)}`} toneClassName={orderStatusTone(order.order_status, order.payment_status, order.sync_status)} />
                     <StatusChip label={`Pagamento: ${formatPaymentStatus(order.payment_status)}`} toneClassName={paymentStatusTone(order.payment_status)} />
                     <StatusChip label={`Sync: ${formatSyncStatus(order.sync_status)}`} toneClassName={syncStatusTone(order.sync_status)} />
                 </View>
 
-                <View className="flex-row flex-wrap items-center justify-between gap-2">
-                    <Text className="text-sm text-muted-foreground">{itemCount === null ? "Carregando itens..." : `${itemCount} item(ns)`}</Text>
-                    <Text className="text-sm text-muted-foreground">{order.offline_created_at ? "Compra criada offline" : "Compra criada online"}</Text>
-                </View>
+                <Text className="text-sm text-muted-foreground">{itemCount === null ? "Carregando itens..." : `${itemCount} item(ns)`}</Text>
 
                 {syncIssue ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{syncIssue}</Text> : null}
 

@@ -164,7 +164,7 @@ export function ProductFormModal({ visible, mode, categories, initialCategoryId,
                             );
                         })}
 
-                        {categories.length === 0 ? <Text className="rounded-2xl border border-border bg-card px-4 py-4 text-center text-sm font-bold text-muted-foreground">Nenhuma categoria disponivel.</Text> : null}
+                        {categories.length === 0 ? <Text className="rounded-2xl border border-border bg-card px-4 py-4 text-center text-sm font-bold text-muted-foreground">Nenhuma categoria disponível.</Text> : null}
                     </View>
                 </ScrollView>
             </BottomSheetModal>

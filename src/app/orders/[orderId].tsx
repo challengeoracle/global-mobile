@@ -1,19 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useColorScheme } from "nativewind";
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
-import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
-import { getLocalOrderByAnyId, getLocalOrderItems, getOrderSyncIssue, LocalOrderItemRow, LocalOrderRow, saveRemoteOrder, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
+import { useAuth } from "@/src/domains/auth/hooks/auth-context";
+import { LocalOrderItemRow, LocalOrderRow, getLocalOrderByAnyId, getLocalOrderItems, getOrderSyncIssue, saveRemoteOrder, updateLocalOrderPaymentStatusByRemoteId } from "@/src/domains/order/repositories/order-repository";
 import { getOrderById } from "@/src/domains/order/services/order-service";
+import { orderStatusTone, paymentStatusTone, syncStatusTone } from "@/src/domains/order/utils/order-display";
 import { PaymentTransactionModal } from "@/src/domains/payment/components/payment-transaction-modal";
-import { getPaymentTransactionByOrderId } from "@/src/domains/payment/services/payment-service";
+import { getPaymentTransactionByOrderId, settlePaymentDebt } from "@/src/domains/payment/services/payment-service";
 import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment";
 import { ProtectedRoute } from "@/src/shared/components/auth/protected-route";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 import { StatusChip } from "@/src/shared/components/ui/status-chip";
-import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus, formatSyncTimestampLabel } from "@/src/shared/lib/formatters";
+import { formatCreditDebtStatus, formatCurrency, formatDateTime, formatOrderStatus, formatPaymentStatus, formatStoreLabel, formatSyncStatus, formatSyncTimestampLabel } from "@/src/shared/lib/formatters";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
 type DetailRowProps = {
@@ -26,9 +27,7 @@ function DetailRow({ label, value, subtle = false }: DetailRowProps) {
     return (
         <View className="flex-row justify-between gap-4 py-2.5">
             <Text className="flex-1 text-sm font-bold text-muted-foreground">{label}</Text>
-            <Text className={`max-w-[58%] flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>
-                {value || "-"}
-            </Text>
+            <Text className={`max-w-[58%] flex-1 text-right text-sm ${subtle ? "text-muted-foreground" : "text-card-foreground"}`}>{value || "-"}</Text>
         </View>
     );
 }
@@ -44,6 +43,7 @@ export default function OrderDetailsScreen() {
 function OrderDetailsContent() {
     const { orderId } = useLocalSearchParams<{ orderId: string }>();
     const { colorScheme } = useColorScheme();
+    const { user } = useAuth();
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
     const network = useNetworkStatus();
 
@@ -53,11 +53,42 @@ function OrderDetailsContent() {
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState("");
     const [paymentLoading, setPaymentLoading] = useState(false);
+    const [debtSettling, setDebtSettling] = useState(false);
     const [paymentTransaction, setPaymentTransaction] = useState<PaymentTransactionResponse | null>(null);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
     const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
     const totalItems = items.reduce((total, item) => total + item.quantity, 0);
+    const isCustomer = user?.role === "CUSTOMER";
+    const hasDebt = (paymentTransaction?.creditDebtAmount ?? 0) > 0;
+    const debtSettled = !hasDebt && Boolean(paymentTransaction?.creditDebtSettledAt);
+    const shouldShowDebtCallout = hasDebt || debtSettled;
+
+    const debtCallout = useMemo(() => {
+        if (hasDebt && paymentTransaction) {
+            return {
+                containerClassName: "border-red-500/30 bg-red-500/10",
+                titleClassName: "text-red-700",
+                bodyClassName: "text-red-700",
+                title: formatCreditDebtStatus(paymentTransaction.creditDebtAmount, paymentTransaction.creditDebtSettledAt),
+                body: `Há um problema financeiro neste pedido: ${formatCurrency(paymentTransaction.creditDebtAmount)} ficou em aberto e deixou a carteira do cliente negativa.`,
+                helper: "O cliente concluiu a compra, mas não tinha saldo suficiente. Adicione saldo na carteira e quite este pedido para regularizar a situação.",
+            };
+        }
+
+        if (debtSettled && paymentTransaction) {
+            return {
+                containerClassName: "border-emerald-500/20 bg-emerald-500/10",
+                titleClassName: "text-emerald-700",
+                bodyClassName: "text-muted-foreground",
+                title: "Crédito devedor quitado",
+                body: "Este pedido já foi regularizado e não existe mais valor pendente na carteira do cliente.",
+                helper: paymentTransaction.creditDebtSettledAt ? `Quitado em ${formatDateTime(paymentTransaction.creditDebtSettledAt)}.` : "",
+            };
+        }
+
+        return null;
+    }, [debtSettled, hasDebt, paymentTransaction]);
 
     async function hydrateLocalState(targetId: string) {
         const localOrder = await getLocalOrderByAnyId(targetId);
@@ -75,6 +106,25 @@ function OrderDetailsContent() {
         setItems(localItems);
         setQueueMessage(syncIssue?.lastError ?? "");
         return localOrder;
+    }
+
+    async function loadPaymentSnapshot(remoteOrderId: string, currentPaymentStatus?: string | null) {
+        try {
+            const payment = await getPaymentTransactionByOrderId(remoteOrderId);
+            setPaymentTransaction(payment);
+
+            const nextStatus = payment.status === "APPROVED" ? "PAID" : payment.status === "REJECTED" ? "REJECTED" : null;
+
+            if (nextStatus && nextStatus !== currentPaymentStatus) {
+                await updateLocalOrderPaymentStatusByRemoteId({
+                    remoteOrderId,
+                    paymentStatus: nextStatus,
+                });
+                await hydrateLocalState(remoteOrderId);
+            }
+        } catch {
+            setPaymentTransaction(null);
+        }
     }
 
     async function loadOrderDetails() {
@@ -102,21 +152,8 @@ function OrderDetailsContent() {
                 await saveRemoteOrder(remoteOrder);
                 const refreshedLocalOrder = await hydrateLocalState(remoteOrder.id);
 
-                if (refreshedLocalOrder?.remote_order_id && (refreshedLocalOrder.payment_status === "PENDING" || refreshedLocalOrder.payment_status === "PENDING_PAYMENT")) {
-                    try {
-                        const payment = await getPaymentTransactionByOrderId(refreshedLocalOrder.remote_order_id);
-                        const nextStatus = payment.status === "APPROVED" ? "PAID" : payment.status === "REJECTED" ? "REJECTED" : null;
-
-                        if (nextStatus) {
-                            await updateLocalOrderPaymentStatusByRemoteId({
-                                remoteOrderId: refreshedLocalOrder.remote_order_id,
-                                paymentStatus: nextStatus,
-                            });
-                            await hydrateLocalState(remoteOrder.id);
-                        }
-                    } catch {
-                        // If payment data is not ready yet, we keep the last persisted snapshot.
-                    }
+                if (refreshedLocalOrder?.remote_order_id) {
+                    await loadPaymentSnapshot(refreshedLocalOrder.remote_order_id, refreshedLocalOrder.payment_status);
                 }
             } catch (err) {
                 setMessage(err instanceof Error ? err.message : "Não foi possível atualizar este pedido com o backend.");
@@ -144,6 +181,26 @@ function OrderDetailsContent() {
             setMessage(err instanceof Error ? err.message : "Não foi possível consultar a transação de pagamento.");
         } finally {
             setPaymentLoading(false);
+        }
+    }
+
+    async function handleSettleDebt() {
+        if (!order?.remote_order_id) {
+            setMessage("Este pedido ainda não possui um identificador remoto para quitar a dívida.");
+            return;
+        }
+
+        try {
+            setDebtSettling(true);
+            setMessage("");
+            const updatedTransaction = await settlePaymentDebt(order.remote_order_id);
+            setPaymentTransaction(updatedTransaction);
+            setMessage("Crédito devedor quitado com sucesso.");
+            await loadOrderDetails();
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : "Não foi possível quitar o crédito devedor.");
+        } finally {
+            setDebtSettling(false);
         }
     }
 
@@ -190,7 +247,6 @@ function OrderDetailsContent() {
                                 <View className="flex-1">
                                     <Text className="text-xs font-black uppercase tracking-[2px] text-muted-foreground">Data da compra</Text>
                                     <Text className="mt-2 text-base font-bold text-card-foreground">{formatDateTime(order.offline_created_at ?? order.created_at)}</Text>
-                                    <Text className="mt-1 text-sm text-muted-foreground">{order.offline_created_at ? "Registro iniciado offline" : "Registro iniciado online"}</Text>
                                 </View>
 
                                 <View className="max-w-[44%] items-end">
@@ -203,7 +259,7 @@ function OrderDetailsContent() {
 
                         <View className="px-5 py-4">
                             <View className="flex-row flex-wrap gap-2 overflow-hidden">
-                                <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status)}`} toneClassName={orderStatusTone(order.order_status)} />
+                                <StatusChip label={`Pedido: ${formatOrderStatus(order.order_status, order.payment_status, order.sync_status)}`} toneClassName={orderStatusTone(order.order_status, order.payment_status, order.sync_status)} />
                                 <StatusChip label={`Pagamento: ${formatPaymentStatus(order.payment_status)}`} toneClassName={paymentStatusTone(order.payment_status)} />
                                 <StatusChip label={`Sync: ${formatSyncStatus(order.sync_status)}`} toneClassName={syncStatusTone(order.sync_status)} />
                             </View>
@@ -213,13 +269,23 @@ function OrderDetailsContent() {
                     {message ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{message}</Text> : null}
                     {queueMessage ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{queueMessage}</Text> : null}
 
+                    {shouldShowDebtCallout && debtCallout ? (
+                        <View className={`mt-4 rounded-[28px] border p-5 ${debtCallout.containerClassName}`}>
+                            <Text className={`text-sm font-black uppercase tracking-[1px] ${debtCallout.titleClassName}`}>{debtCallout.title}</Text>
+                            <Text className="mt-2 text-base font-bold text-card-foreground">{debtCallout.body}</Text>
+                            {debtCallout.helper ? <Text className={`mt-2 text-sm leading-6 ${debtCallout.bodyClassName}`}>{debtCallout.helper}</Text> : null}
+                        </View>
+                    ) : null}
+
                     <Section title="Itens da compra">
                         {items.map((item) => (
                             <View key={item.id} className="rounded-[24px] border border-border bg-background p-4">
                                 <View className="flex-row items-start justify-between gap-3">
                                     <View className="flex-1">
                                         <Text className="text-base font-black text-card-foreground">{item.product_name}</Text>
-                                        <Text className="mt-1 text-sm text-muted-foreground">{item.quantity} x {formatCurrency(item.unit_price)}</Text>
+                                        <Text className="mt-1 text-sm text-muted-foreground">
+                                            {item.quantity} x {formatCurrency(item.unit_price)}
+                                        </Text>
                                     </View>
                                     <Text className="text-base font-black text-card-foreground">{formatCurrency(item.total_price)}</Text>
                                 </View>
@@ -229,13 +295,22 @@ function OrderDetailsContent() {
 
                     <Section title="Resumo do pagamento">
                         <DetailRow label="Pagamento" value={formatPaymentStatus(order.payment_status)} />
-                        <DetailRow label="Situação do pedido" value={formatOrderStatus(order.order_status)} />
+                        <DetailRow label="Situação do pedido" value={formatOrderStatus(order.order_status, order.payment_status, order.sync_status)} />
                         <DetailRow label="Sincronização" value={formatSyncStatus(order.sync_status)} />
+                        <DetailRow label="Crédito devedor" value={paymentTransaction ? formatCreditDebtStatus(paymentTransaction.creditDebtAmount, paymentTransaction.creditDebtSettledAt) : "-"} />
+                        <DetailRow label="Valor devedor" value={paymentTransaction ? formatCurrency(paymentTransaction.creditDebtAmount ?? 0) : "-"} />
 
                         {order.remote_order_id ? (
                             <Pressable onPress={handleViewPayment} disabled={paymentLoading} className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
                                 {paymentLoading ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="card-outline" size={18} color="#ffffff" />}
                                 <Text className="text-sm font-black uppercase tracking-[1px] text-white">Ver comprovante do pagamento</Text>
+                            </Pressable>
+                        ) : null}
+
+                        {isCustomer && hasDebt && order.remote_order_id ? (
+                            <Pressable onPress={handleSettleDebt} disabled={debtSettling} className="mt-3 h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-red-600 disabled:opacity-60">
+                                {debtSettling ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="warning-outline" size={18} color="#ffffff" />}
+                                <Text className="text-sm font-black uppercase tracking-[1px] text-white">Quitar crédito devedor</Text>
                             </Pressable>
                         ) : null}
                     </Section>

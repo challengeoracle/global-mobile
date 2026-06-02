@@ -536,7 +536,6 @@ export async function runMigrations() {
             store_id TEXT,
             customer_id TEXT,
             seller_id TEXT,
-            device_id TEXT,
             order_status TEXT NOT NULL,
             payment_status TEXT NOT NULL,
             sync_status TEXT NOT NULL,

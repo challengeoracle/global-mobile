@@ -14,7 +14,6 @@ export type LocalOrderRow = {
     store_id: string | null;
     customer_id: string | null;
     seller_id: string | null;
-    device_id: string | null;
     order_status: string;
     payment_status: string;
     sync_status: string;
@@ -60,6 +59,18 @@ type QueuedOrderRepairRow = {
     operation_id: string;
     payload_json: string;
     status: string;
+};
+
+type PendingSellerOrderRow = {
+    local_order_id: string;
+    customer_id: string | null;
+    offline_created_at: string | null;
+};
+
+type PendingSellerOrderItemRow = {
+    product_id: string;
+    quantity: number;
+    unit_price: number;
 };
 
 type ProductIdRow = {
@@ -131,7 +142,6 @@ export async function getLocalOrderByLocalId(localOrderId: string) {
             store_id,
             customer_id,
             seller_id,
-            device_id,
             order_status,
             payment_status,
             sync_status,
@@ -170,7 +180,6 @@ export async function getLocalOrderByRemoteId(remoteOrderId: string) {
             store_id,
             customer_id,
             seller_id,
-            device_id,
             order_status,
             payment_status,
             sync_status,
@@ -209,7 +218,6 @@ export async function getLocalOrderById(orderId: string) {
             store_id,
             customer_id,
             seller_id,
-            device_id,
             order_status,
             payment_status,
             sync_status,
@@ -311,7 +319,6 @@ export async function createLocalOfflineOrder(params: {
                 store_id,
                 customer_id,
                 seller_id,
-                device_id,
                 order_status,
                 payment_status,
                 sync_status,
@@ -325,9 +332,9 @@ export async function createLocalOfflineOrder(params: {
                 owner_user_id,
                 owner_store_id,
                 owner_role
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, null, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.confirmedBySeller ? offlineCreatedAt : null, getServerSyncTimestamp(params.syncStatus, createdAt), getServerSyncTimestamp(params.syncStatus, createdAt), context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.confirmedBySeller ? offlineCreatedAt : null, getServerSyncTimestamp(params.syncStatus, createdAt), getServerSyncTimestamp(params.syncStatus, createdAt), context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
         );
 
         for (const item of params.items) {
@@ -503,7 +510,6 @@ export async function getLocalOrders() {
             store_id,
             customer_id,
             seller_id,
-            device_id,
             order_status,
             payment_status,
             sync_status,
@@ -541,7 +547,6 @@ export async function getPendingLocalOrders() {
             store_id,
             customer_id,
             seller_id,
-            device_id,
             order_status,
             payment_status,
             sync_status,
@@ -814,6 +819,72 @@ export async function repairQueuedOrderProductReferences() {
     }
 }
 
+export async function ensurePendingSellerOrdersQueued() {
+    const context = await getLocalSessionContext();
+
+    if (!context?.storeId || context.role !== "SELLER") {
+        return { repaired: 0 };
+    }
+
+    const pendingOrders = await db.getAllAsync<PendingSellerOrderRow>(
+        `
+        SELECT local_order_id, customer_id, offline_created_at
+        FROM orders
+        WHERE owner_role = 'SELLER'
+          AND owner_store_id = ?
+          AND sync_status = 'PENDING'
+          AND local_order_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM order_sync_queue q
+              WHERE q.operation_id = orders.local_order_id
+                AND q.owner_role = 'SELLER'
+                AND q.owner_store_id = orders.owner_store_id
+          )
+        ORDER BY created_at ASC
+        `,
+        [context.storeId],
+    );
+
+    if (!pendingOrders.length) {
+        return { repaired: 0 };
+    }
+
+    let repaired = 0;
+
+    for (const order of pendingOrders) {
+        const items = await db.getAllAsync<PendingSellerOrderItemRow>(
+            `
+            SELECT oi.product_id, oi.quantity, oi.unit_price
+            FROM order_items oi
+            INNER JOIN orders o ON o.id = oi.order_id
+            WHERE o.local_order_id = ?
+            ORDER BY oi.id ASC
+            `,
+            [order.local_order_id],
+        );
+
+        if (!items.length) {
+            continue;
+        }
+
+        await enqueueOrderSync(order.local_order_id, {
+            localOrderId: order.local_order_id,
+            customerId: order.customer_id ?? undefined,
+            offlineCreatedAt: order.offline_created_at ?? now(),
+            items: items.map((item) => ({
+                productId: item.product_id,
+                quantity: item.quantity,
+                unitPrice: item.unit_price,
+            })),
+        });
+
+        repaired += 1;
+    }
+
+    return { repaired };
+}
+
 export async function saveRemoteOrder(order: OrderResponse) {
     await db.withTransactionAsync(async () => {
         const context = await getLocalSessionContext();
@@ -835,7 +906,6 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 store_id,
                 customer_id,
                 seller_id,
-                device_id,
                 order_status,
                 payment_status,
                 sync_status,
@@ -849,9 +919,9 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 owner_user_id,
                 owner_store_id,
                 owner_role
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, confirmedAt, serverSyncedAt, serverSyncedAt ?? persistedUpdatedAt, context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, confirmedAt, serverSyncedAt, serverSyncedAt ?? persistedUpdatedAt, context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
         );
 
         if (!order.items?.length) {

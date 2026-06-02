@@ -10,8 +10,11 @@ export function syncStatusTone(status?: string | null) {
     return "bg-primary/10 text-primary";
 }
 
-export function orderStatusTone(status?: string | null) {
+export function orderStatusTone(status?: string | null, paymentStatus?: string | null, syncStatus?: string | null) {
+    const isResolvedPayment = paymentStatus === "PAID" || paymentStatus === "APPROVED";
+    const isServerAccepted = syncStatus === "SYNCED" || syncStatus === "OFFLINE_SYNCED";
     if (status === "REJECTED" || status === "CANCELLED") return "bg-red-500/10 text-red-500";
+    if ((status === "CREATED" || status === "PENDING") && (isResolvedPayment || isServerAccepted)) return "bg-primary/10 text-primary";
     if (status === "CONFIRMED" || status === "SELLER_CONFIRMED" || status === "APPROVED") return "bg-primary/10 text-primary";
     return "bg-muted text-muted-foreground";
 }

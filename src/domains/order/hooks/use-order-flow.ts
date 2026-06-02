@@ -3,11 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CatalogProduct } from "@/src/domains/catalog/types/catalog";
 import { useAuth } from "@/src/domains/auth/hooks/auth-context";
-import { createLocalOfflineOrder } from "@/src/domains/order/repositories/order-repository";
+import { createLocalOfflineOrder, ensurePendingSellerOrdersQueued } from "@/src/domains/order/repositories/order-repository";
 import { OrderItemRequest } from "@/src/domains/order/types/order";
 import { buildOrderQrPayload, encodeOrderQr } from "@/src/domains/order/utils/order-qr";
 import { countPendingOrderSyncQueue } from "@/src/domains/sync/repositories/sync-queue-repository";
-import { scheduleSync, syncAll } from "@/src/domains/sync/services/sync-engine";
+import { scheduleSync, syncOrders } from "@/src/domains/sync/services/sync-engine";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
 
 export type CartItem = {
@@ -233,14 +233,14 @@ export function useOrderFlow(storeId?: string | null) {
 
         try {
             setSyncing(true);
+            await ensurePendingSellerOrdersQueued();
 
-            const result = await syncAll({
+            const result = await syncOrders({
                 isConnected: network.canAttemptRemote,
                 canSync: user.role === "SELLER",
-                pullCatalogAfterSync: true,
                 forceRetry: true,
             });
-            const feedbackMessage = result.orders.rejected > 0 ? result.orders.message : result.catalog.rejected > 0 ? result.catalog.message : result.orders.synced > 0 ? result.orders.message : result.catalog.message;
+            const feedbackMessage = result.rejected > 0 ? result.message : result.synced > 0 ? result.message : "Nenhum pedido pendente.";
 
             const pendingAfter = await refreshPendingOrderCount();
 
@@ -252,8 +252,8 @@ export function useOrderFlow(storeId?: string | null) {
                 ok: result.ok,
                 message: feedbackMessage,
                 pendingAfter,
-                synced: result.orders.synced,
-                rejected: result.orders.rejected,
+                synced: result.synced,
+                rejected: result.rejected,
             };
         } catch (err) {
             const fallbackMessage = err instanceof Error ? err.message : "Erro ao sincronizar pedidos.";

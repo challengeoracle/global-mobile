@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ScrollView, Text, View, Pressable } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { PageHeader } from "@/src/shared/components/ui/page-header";
 
@@ -35,7 +35,7 @@ export default function ExploreScreen() {
                     <Text className="mb-4 text-lg font-black text-card-foreground">Operação offline-first</Text>
 
                     <View className="gap-3">
-                        <StepItem number="1" title="Salvar local" description="Pedidos, catálogo e vendas entram primeiro no banco local do aparelho." />
+                        <StepItem number="1" title="Salvar localmente" description="Pedidos, catálogo e vendas entram primeiro no banco local do aparelho." />
                         <StepItem number="2" title="Uso local" description="Com a rede indisponível, o app continua criando pedidos, QR Codes e registros pendentes." />
                         <StepItem number="3" title="Sincronização" description="Quando a conexão retorna, o backend valida os dados e conclui ou rejeita a operação." />
                     </View>
@@ -47,8 +47,8 @@ export default function ExploreScreen() {
                     <View className="gap-3">
                         <FlowCard icon="wifi-outline" color={COLOR_GREEN} title="Cliente online + vendedor online" description="Fluxo normal. Pedido, pagamento, validação e atualização da carteira acontecem na hora." />
                         <FlowCard icon="cloud-offline-outline" color={COLOR_RED} title="Cliente offline + vendedor offline" description="O pedido e a venda ficam pendentes. Ninguém paga nem recebe na hora. Tudo será validado quando a conexão voltar." />
-                        <FlowCard icon="phone-portrait-outline" color={COLOR_PURPLE} title="Cliente online + vendedor offline" description="O cliente monta o pedido e o vendedor salva a venda localmente. O pagamento so e validado quando a venda chega ao backend na sincronizacao." />
-                        <FlowCard icon="qr-code-outline" color={COLOR_ORANGE} title="Cliente offline + vendedor online" description="O vendedor pode confirmar o pedido com QR, mas o status financeiro continua pendente ate o pedido ser validado e o pagamento ser processado pelos servicos centrais." />
+                        <FlowCard icon="phone-portrait-outline" color={COLOR_PURPLE} title="Cliente online + vendedor offline" description="O cliente monta o pedido e o vendedor salva a venda localmente. O pagamento só é validado quando a venda chega ao backend na sincronização." />
+                        <FlowCard icon="qr-code-outline" color={COLOR_ORANGE} title="Cliente offline + vendedor online" description="O vendedor pode confirmar o pedido com QR, mas o status financeiro continua pendente até o pedido ser validado e o pagamento ser processado pelos serviços centrais." />
                     </View>
                 </View>
 

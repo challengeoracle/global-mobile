@@ -102,9 +102,8 @@ O app usa o `signal-auth-service` da pasta `global-java-fresh` para:
 - `POST /auth/register/seller`
 - `POST /auth/register/customer`
 - `GET /auth/me`
-- `PATCH /device/me`
 
-Na prática, isso cobre login, cadastro, recuperação do perfil autenticado e vínculo do dispositivo do vendedor.
+Na prática, isso cobre login, cadastro e recuperação do perfil autenticado. O fluxo offline-first não depende de device.
 
 ### 2. Catálogo e Pedidos
 

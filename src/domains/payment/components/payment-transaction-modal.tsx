@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 
 import { PaymentTransactionResponse } from "@/src/domains/payment/types/payment";
 import { BottomSheetModal } from "@/src/shared/components/ui/bottom-sheet-modal";
-import { formatCurrency, formatDateTime, formatPaymentStatus } from "@/src/shared/lib/formatters";
+import { formatCreditDebtStatus, formatCurrency, formatDateTime, formatPaymentStatus } from "@/src/shared/lib/formatters";
 
 function statusClass(value: string) {
     if (value === "APPROVED" || value === "PAID") return "bg-primary/10 text-primary";
@@ -37,6 +37,9 @@ export function PaymentTransactionModal({ visible, transaction, onClose }: { vis
                         <DetailRow label="Criado em" value={formatDateTime(transaction.createdAt)} />
                         <DetailRow label="Processado em" value={formatDateTime(transaction.processedAt)} />
                         <DetailRow label="Referência do gateway" value={transaction.gatewayReference ?? "-"} />
+                        <DetailRow label="Status do crédito devedor" value={formatCreditDebtStatus(transaction.creditDebtAmount, transaction.creditDebtSettledAt)} />
+                        <DetailRow label="Valor em aberto" value={formatCurrency(transaction.creditDebtAmount ?? 0)} />
+                        <DetailRow label="Quitado em" value={formatDateTime(transaction.creditDebtSettledAt)} />
                         <DetailRow label="Motivo da recusa" value={transaction.failureReason ?? "-"} />
                     </View>
                 </View>

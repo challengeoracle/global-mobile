@@ -68,3 +68,10 @@ export function getPaymentTransactionByOrderId(orderId: string) {
         auth: true,
     });
 }
+
+export function settlePaymentDebt(orderId: string) {
+    return paymentRequest<PaymentTransactionResponse>(`/payment/transactions/order/${orderId}/settle-debt`, {
+        method: "POST",
+        auth: true,
+    });
+}

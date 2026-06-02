@@ -5,14 +5,6 @@ const SALES_API_URL = process.env.EXPO_PUBLIC_SALES_API_URL;
 const PAYMENT_API_URL = process.env.EXPO_PUBLIC_PAYMENT_API_URL;
 const ANALYTICS_API_URL = process.env.EXPO_PUBLIC_ANALYTICS_API_URL;
 
-if (!AUTH_API_URL) {
-    console.warn("EXPO_PUBLIC_AUTH_API_URL não configurada.");
-}
-
-if (!SALES_API_URL) {
-    console.warn("EXPO_PUBLIC_SALES_API_URL não configurada.");
-}
-
 type RequestOptions = {
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;

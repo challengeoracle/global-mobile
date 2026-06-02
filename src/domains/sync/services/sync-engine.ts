@@ -85,15 +85,6 @@ function buildNextRetryAt(attempts: number) {
     return new Date(Date.now() + delayMs).toISOString();
 }
 
-function logSync(scope: "catalog" | "orders", message: string, details?: Record<string, unknown>) {
-    if (details) {
-        console.log(`[sync:${scope}] ${message}`, details);
-        return;
-    }
-
-    console.log(`[sync:${scope}] ${message}`);
-}
-
 async function withRetry<T>(operation: () => Promise<T>, attempts = MAX_RETRIES): Promise<T> {
     let lastCaught: unknown;
 
@@ -192,7 +183,6 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
 
         if (!queueItems.length) {
             if (options.pullCatalogAfterSync) {
-                logSync("catalog", "No local catalog queue. Pulling remote snapshot.");
                 const remoteCatalog = await withRetry(() => getMyCatalog());
                 await saveCatalog(remoteCatalog);
             }
@@ -204,16 +194,6 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
         }
 
         await markCatalogChangesSyncing(queueItems.map((item) => item.queueId));
-        logSync("catalog", "Sending pending catalog changes", {
-            total: queueItems.length,
-            operations: queueItems.map((item) => ({
-                queueId: item.queueId,
-                operationId: item.operationId,
-                operation: item.operation,
-                categoryId: item.categoryId ?? null,
-                productId: item.productId ?? null,
-            })),
-        });
 
         const response = await withRetry(() =>
             syncCatalogRequest({
@@ -222,17 +202,6 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
                 })),
             }),
         );
-        logSync("catalog", "Received catalog sync response", {
-            total: response.results.length,
-            results: response.results.map((item) => ({
-                operationId: item.operationId ?? null,
-                remoteId: item.remoteId ?? null,
-                status: item.status,
-                message: item.message,
-                productId: item.currentState?.productId ?? null,
-                categoryId: item.currentState?.categoryId ?? null,
-            })),
-        });
 
         let synced = 0;
         let rejected = 0;
@@ -254,33 +223,17 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
                 const remoteProductId = result.currentState?.productId ?? null;
 
                 if (localProductId && remoteProductId && localProductId !== remoteProductId) {
-                    logSync("catalog", "Reconciling local product id with remote id", {
-                        operationId: queueItem.operationId,
-                        localProductId,
-                        remoteProductId,
-                    });
                     await reconcileProductIdReference(localProductId, remoteProductId);
                 }
             } else {
                 rejected += 1;
-                logSync("catalog", "Catalog change rejected", {
-                    operationId: queueItem.operationId,
-                    productId: queueItem.productId ?? null,
-                    categoryId: queueItem.categoryId ?? null,
-                    message: result.message,
-                });
                 await markCatalogChangeRejected(queueItem.queueId, result.message);
             }
         }
 
         if (options.pullCatalogAfterSync && rejected === 0) {
-            logSync("catalog", "Catalog queue resolved. Pulling remote snapshot.");
             const remoteCatalog = await withRetry(() => getMyCatalog());
             await saveCatalog(remoteCatalog);
-        } else if (options.pullCatalogAfterSync && rejected > 0) {
-            logSync("catalog", "Skipping remote catalog pull because there are rejected local changes", {
-                rejected,
-            });
         }
 
         const pendingAfter = await countPendingCatalogChanges();
@@ -341,36 +294,12 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
         }
 
         await markOrderQueueSyncing(queueItems.map((item) => item.queueId));
-        logSync("orders", "Sending pending offline orders", {
-            total: queueItems.length,
-            orders: queueItems.map((item) => ({
-                queueId: item.queueId,
-                localOrderId: item.localOrderId,
-                items: item.items.map((orderItem) => ({
-                    productId: orderItem.productId,
-                    quantity: orderItem.quantity,
-                    unitPrice: orderItem.unitPrice ?? null,
-                })),
-            })),
-        });
 
         const response = await withRetry(() =>
             syncOrdersRequest({
                 orders: queueItems.map(({ queueId: _queueId, operationId: _operationId, entityType: _entityType, status: _status, attempts: _attempts, lastError: _lastError, ...order }) => order),
             }),
         );
-        logSync("orders", "Received order sync response", {
-            total: response.results.length,
-            results: response.results.map((item) => ({
-                localOrderId: item.localOrderId ?? item.localId ?? null,
-                remoteId: item.orderId ?? item.remoteId ?? null,
-                status: item.status,
-                message: item.message,
-                orderStatus: item.currentState?.orderStatus ?? item.orderStatus ?? null,
-                paymentStatus: item.currentState?.paymentStatus ?? item.paymentStatus ?? null,
-                syncStatus: item.currentState?.syncStatus ?? item.syncStatus ?? null,
-            })),
-        });
 
         let synced = 0;
         let rejected = 0;
@@ -397,14 +326,6 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
                 await markOrderQueueSynced(queuedOrder.queueId);
             } else {
                 rejected += 1;
-                logSync("orders", "Offline order rejected", {
-                    localOrderId,
-                    items: queuedOrder.items.map((item) => ({
-                        productId: item.productId,
-                        quantity: item.quantity,
-                    })),
-                    message: result.message,
-                });
 
                 await restoreLocalStockForRejectedOrder(localOrderId);
                 await markOrderRejected({
@@ -481,13 +402,8 @@ async function syncAll(options: SyncOptions = {}): Promise<SyncAllResult> {
             });
 
             if (!catalog.ok || catalog.pendingAfter > 0 || catalog.rejected > 0) {
-                logSync("orders", "Skipping order sync until catalog queue is fully resolved", {
-                    catalogOk: catalog.ok,
-                    catalogPendingAfter: catalog.pendingAfter,
-                    catalogRejected: catalog.rejected,
-                });
-
                 const summary = await getSyncSummary();
+                const pendingOrders = await countPendingOrderSyncQueue();
 
                 return {
                     ok: false,
@@ -496,11 +412,11 @@ async function syncAll(options: SyncOptions = {}): Promise<SyncAllResult> {
                     orders: {
                         ok: false,
                         skipped: true,
-                        pendingBefore: await countPendingOrderSyncQueue(),
-                        pendingAfter: await countPendingOrderSyncQueue(),
+                        pendingBefore: pendingOrders,
+                        pendingAfter: pendingOrders,
                         synced: 0,
                         rejected: 0,
-                        message: "Pedidos aguardando sincronizacao do catalogo primeiro.",
+                        message: "Pedidos aguardando sincronização do catálogo primeiro.",
                     },
                     summary,
                 };

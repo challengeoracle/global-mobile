@@ -10,7 +10,7 @@ export type PageResponse<T> = {
     last: boolean;
 };
 
-export type WalletTransactionType = "DEPOSIT" | "PAYMENT_DEBIT" | "PAYMENT_CREDIT" | "SETTLEMENT";
+export type WalletTransactionType = "DEPOSIT" | "PAYMENT_DEBIT" | "PAYMENT_CREDIT" | "DEBT_PAYMENT" | "SETTLEMENT";
 
 export type PaymentTransactionStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -45,6 +45,8 @@ export type PaymentTransactionResponse = {
     status: PaymentTransactionStatus;
     failureReason: string | null;
     gatewayReference: string | null;
+    creditDebtAmount: number;
+    creditDebtSettledAt: string | null;
     createdAt: string;
     processedAt: string | null;
 };

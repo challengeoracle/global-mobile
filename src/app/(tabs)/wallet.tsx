@@ -33,12 +33,13 @@ export default function WalletScreen() {
     const canSettleStoreWallet = isSeller && (storeWallet?.pendingBalance ?? 0) > 0;
 
     const movements = useMemo(
-        () => buildWalletMovements({
-            isSeller,
-            personalWalletTransactions,
-            storeWalletTransactions,
-            paymentTransactions,
-        }),
+        () =>
+            buildWalletMovements({
+                isSeller,
+                personalWalletTransactions,
+                storeWalletTransactions,
+                paymentTransactions,
+            }),
         [isSeller, paymentTransactions, personalWalletTransactions, storeWalletTransactions],
     );
 
@@ -65,7 +66,11 @@ export default function WalletScreen() {
             <View className="px-6 pb-10 pt-14">
                 <Text className="text-sm font-bold uppercase tracking-[3px] text-primary">Carteira</Text>
                 <Text className="mt-2 text-4xl font-black tracking-[-1px] text-foreground">{isSeller ? "Carteiras e recebimentos" : "Saldo e extrato"}</Text>
-                <Text className="mt-3 text-base leading-7 text-muted-foreground">{isSeller ? "Acompanhe a carteira da loja, sua carteira pessoal e libere o saldo pendente quando quiser." : "Adicione saldo fictício para testar o fluxo e acompanhe cada movimentação financeira."}</Text>
+                <Text className="mt-3 text-base leading-7 text-muted-foreground">
+                    {isSeller
+                        ? "Acompanhe a carteira da loja, sua carteira pessoal e libere o saldo pendente quando quiser."
+                        : "Adicione saldo fictício para testar o fluxo e acompanhe cada movimentação financeira."}
+                </Text>
 
                 {isSeller ? (
                     <View className="mt-6 gap-4">
@@ -88,7 +93,7 @@ export default function WalletScreen() {
                     </View>
                 )}
 
-                <Pressable onPress={() => depositFake({ amount: 100, description: "Depósito fake na carteira" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
+                <Pressable onPress={() => depositFake({ amount: 100, description: "Depósito fictício na carteira" })} disabled={depositing} className="mt-4 h-14 flex-row items-center justify-center gap-2 rounded-2xl bg-primary disabled:opacity-60">
                     {depositing ? <ActivityIndicator color="#ffffff" /> : <Ionicons name="add-circle-outline" size={18} color="#ffffff" />}
                     <Text className="text-sm font-black uppercase tracking-[1px] text-primary-foreground">Adicionar R$ 100</Text>
                 </Pressable>
@@ -150,7 +155,9 @@ function WalletMovementsSection({ isSeller, movements }: { isSeller: boolean; mo
         <View className="mt-6 rounded-3xl border border-border bg-card p-5">
             <Text className="text-lg font-black text-card-foreground">Movimentações</Text>
             <Text className="mt-1 text-sm text-muted-foreground">
-                {isSeller ? "Lista completa com depósitos, recebimentos, liberações de saldo e pagamentos vinculados aos pedidos." : "Lista completa com depósitos, débitos da carteira e pagamentos vinculados aos pedidos."}
+                {isSeller
+                    ? "Lista completa com depósitos, recebimentos, liberações de saldo e pagamentos vinculados aos pedidos."
+                    : "Lista completa com depósitos, débitos da carteira e pagamentos vinculados aos pedidos."}
             </Text>
 
             <View className="mt-4 gap-3">
