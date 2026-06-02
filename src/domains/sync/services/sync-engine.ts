@@ -1,9 +1,8 @@
 import { normalizeLegacyCatalogIds, reconcileProductIdReference, saveCatalog } from "@/src/domains/catalog/repositories/catalog-repository";
 import { getMyCatalog } from "@/src/domains/catalog/services/catalog-service";
-import { markOrderRejected, markOrderSynced, restoreLocalStockForRejectedOrder } from "@/src/domains/order/repositories/order-repository";
+import { markOrderRejected, markOrderSynced, repairQueuedOrderProductReferences, restoreLocalStockForRejectedOrder } from "@/src/domains/order/repositories/order-repository";
 import { countPendingCatalogChanges, countPendingOrderSyncQueue, getPendingCatalogChanges, getPendingOrderSyncQueue, markCatalogChangeFailed, markCatalogChangeRejected, markCatalogChangeSynced, markCatalogChangesSyncing, markOrderQueueFailed, markOrderQueueRejected, markOrderQueueSynced, markOrderQueueSyncing } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { syncCatalog as syncCatalogRequest, syncOrders as syncOrdersRequest } from "@/src/domains/sync/services/sync-service";
-import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
 
 type SyncScope = "catalog" | "orders";
 
@@ -11,6 +10,7 @@ type SyncOptions = {
     isConnected?: boolean;
     canSync?: boolean;
     pullCatalogAfterSync?: boolean;
+    forceRetry?: boolean;
 };
 
 type ScheduleSyncOptions = SyncOptions & {
@@ -174,7 +174,7 @@ async function runExclusive<T>(fallback: () => Promise<T>, operation: () => Prom
 async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResult> {
     const pendingBefore = await countPendingCatalogChanges();
     const skipMessage = shouldSkip(options);
-    let queueItems = await getPendingCatalogChanges();
+    let queueItems = await getPendingCatalogChanges(options.forceRetry);
 
     if (skipMessage) {
         if (options?.isConnected === false && queueItems.length > 0) {
@@ -188,10 +188,11 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
     try {
         await normalizeLegacyCatalogIds();
 
-        queueItems = await getPendingCatalogChanges();
+        queueItems = await getPendingCatalogChanges(options.forceRetry);
 
         if (!queueItems.length) {
             if (options.pullCatalogAfterSync) {
+                logSync("catalog", "No local catalog queue. Pulling remote snapshot.");
                 const remoteCatalog = await withRetry(() => getMyCatalog());
                 await saveCatalog(remoteCatalog);
             }
@@ -214,10 +215,8 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
             })),
         });
 
-        const deviceId = await getOrCreateDeviceId();
         const response = await withRetry(() =>
             syncCatalogRequest({
-                deviceId,
                 changes: queueItems.map(({ queueId: _queueId, entityType: _entityType, status: _status, attempts: _attempts, lastError: _lastError, ...change }) => ({
                     ...change,
                 })),
@@ -252,7 +251,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
                 await markCatalogChangeSynced(queueItem.queueId);
 
                 const localProductId = queueItem.productId;
-                const remoteProductId = result.currentState?.productId ?? result.remoteId ?? null;
+                const remoteProductId = result.currentState?.productId ?? null;
 
                 if (localProductId && remoteProductId && localProductId !== remoteProductId) {
                     logSync("catalog", "Reconciling local product id with remote id", {
@@ -275,6 +274,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
         }
 
         if (options.pullCatalogAfterSync && rejected === 0) {
+            logSync("catalog", "Catalog queue resolved. Pulling remote snapshot.");
             const remoteCatalog = await withRetry(() => getMyCatalog());
             await saveCatalog(remoteCatalog);
         } else if (options.pullCatalogAfterSync && rejected > 0) {
@@ -318,7 +318,7 @@ async function syncCatalogInternal(options: SyncOptions = {}): Promise<ScopeResu
 async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResult> {
     const pendingBefore = await countPendingOrderSyncQueue();
     const skipMessage = shouldSkip(options);
-    let queueItems = await getPendingOrderSyncQueue();
+    let queueItems = await getPendingOrderSyncQueue(options.forceRetry);
 
     if (skipMessage) {
         if (options?.isConnected === false && queueItems.length > 0) {
@@ -330,7 +330,8 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
     }
 
     try {
-        queueItems = await getPendingOrderSyncQueue();
+        await repairQueuedOrderProductReferences();
+        queueItems = await getPendingOrderSyncQueue(options.forceRetry);
 
         if (!queueItems.length) {
             return {
@@ -353,10 +354,8 @@ async function syncOrdersInternal(options: SyncOptions = {}): Promise<ScopeResul
             })),
         });
 
-        const deviceId = await getOrCreateDeviceId();
         const response = await withRetry(() =>
             syncOrdersRequest({
-                deviceId,
                 orders: queueItems.map(({ queueId: _queueId, operationId: _operationId, entityType: _entityType, status: _status, attempts: _attempts, lastError: _lastError, ...order }) => order),
             }),
         );
@@ -480,6 +479,33 @@ async function syncAll(options: SyncOptions = {}): Promise<SyncAllResult> {
                 ...options,
                 pullCatalogAfterSync: options.pullCatalogAfterSync ?? true,
             });
+
+            if (!catalog.ok || catalog.pendingAfter > 0 || catalog.rejected > 0) {
+                logSync("orders", "Skipping order sync until catalog queue is fully resolved", {
+                    catalogOk: catalog.ok,
+                    catalogPendingAfter: catalog.pendingAfter,
+                    catalogRejected: catalog.rejected,
+                });
+
+                const summary = await getSyncSummary();
+
+                return {
+                    ok: false,
+                    skipped: false,
+                    catalog,
+                    orders: {
+                        ok: false,
+                        skipped: true,
+                        pendingBefore: await countPendingOrderSyncQueue(),
+                        pendingAfter: await countPendingOrderSyncQueue(),
+                        synced: 0,
+                        rejected: 0,
+                        message: "Pedidos aguardando sincronizacao do catalogo primeiro.",
+                    },
+                    summary,
+                };
+            }
+
             const orders = await syncOrdersInternal(options);
             const summary = await getSyncSummary();
 

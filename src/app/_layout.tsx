@@ -41,6 +41,7 @@ function SyncAutoBootstrap() {
                 isConnected,
                 canSync: true,
                 pullCatalogAfterSync: true,
+                forceRetry: internetRestored,
                 debounceMs: 900,
             });
             hasTriggeredInitialSync.current = true;

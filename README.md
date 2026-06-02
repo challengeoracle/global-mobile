@@ -1,237 +1,200 @@
 # OffPay Mobile
 
-O `global-mobile` é o aplicativo do OffPay. Ele mantém a operação comercial funcionando mesmo quando a conectividade entre cliente, vendedor e backend oscila ou fica indisponível temporariamente.
+Aplicativo mobile do ecossistema OffPay, construído com Expo e React Native para sustentar a operação de vendedores e clientes mesmo quando a internet falha. O app prioriza persistência local, leitura e geração de QR Code, e sincronização posterior com os serviços centrais.
 
-O aplicativo segue a estratégia offline-first:
+## Visão Geral
 
-- dados importantes são persistidos localmente no aparelho
-- o catálogo pode ser importado e consultado sem conexão constante
-- pedidos podem ser montados e confirmados localmente
-- a sincronização com o backend acontece quando houver conectividade
+O fluxo principal do produto aparece com clareza na experiência de operação:
 
-## Papel do Aplicativo
+- o vendedor mantém o catálogo da loja no próprio aparelho
+- o cliente importa esse catálogo por QR Code
+- o pedido nasce localmente no dispositivo do cliente
+- o vendedor confirma a compra lendo o QR Code do pedido
+- quando houver conexão, o app sincroniza catálogo e pedidos com o backend
 
-O app mobile é o ponto principal da operação do OffPay. Ele cobre o ciclo comercial entre cliente e vendedor:
+Na prática, isso transforma o celular em um terminal de venda resiliente. A operação não depende de conexão constante para continuar vendendo, registrando pedidos e organizando o catálogo.
 
-- autenticação
-- armazenamento seguro da sessão
-- importação e consulta de catálogo
-- montagem de pedido
-- troca de dados por QR Code
-- persistência local
-- sincronização posterior com o backend
+## Pontos Fortes
 
-O aplicativo não depende de ativação manual do modo offline para operar no fluxo principal. Também não exige `offlineToken` ou `offlineSession` como pré-condição obrigatória para vendas e sincronizações.
+- Operação offline-first: catálogo, pedidos e filas de sincronização ficam persistidos localmente em SQLite.
+- Fluxo de venda orientado por QR Code: compartilhamento de catálogo, criação de pedido e confirmação da venda funcionam de forma simples no balcão.
+- Sincronização por domínio: catálogo e pedidos possuem filas independentes, controle de tentativas, rejeições e reconciliação posterior.
+- Experiência adaptada por papel: o app muda a navegação e a home conforme o usuário é vendedor ou cliente.
+- Arquitetura modular: autenticação, catálogo, pedidos, carteira, sync e insights ficam separados por domínio, facilitando manutenção e evolução.
+- Integração preparada para microsserviços: cada contexto remoto aponta para uma API específica, sem acoplar tudo a um único backend.
 
-## Perfis de Usuário
+## Stack
 
-O aplicativo trabalha com dois perfis.
+- Expo 54
+- React Native 0.81
+- Expo Router
+- TypeScript
+- NativeWind
+- Expo SQLite
+- Expo Secure Store
 
-## Seller
+## Estrutura do App
 
-Responsável por:
+```text
+src/
+  app/                  rotas e telas
+  domains/
+    auth/               login, cadastro e contexto de usuário
+    catalog/            catálogo local, importação por QR e sync
+    order/              carrinho, geração de pedido e confirmação
+    payment/            carteira e transações
+    insights/           métricas e perguntas para IA
+    sync/               engine e filas de sincronização
+  shared/
+    components/         blocos reutilizáveis de UI
+    database/           SQLite e migrações locais
+    hooks/              rede e estado de sincronização
+    lib/                cliente HTTP, storage seguro e utilitários
+```
 
-- manter o catálogo da loja
-- atualizar categorias, produtos e estoque
-- compartilhar o catálogo por QR Code
-- escanear pedidos gerados pelo cliente
-- confirmar vendas no aparelho
-- sincronizar catálogo e pedidos com o backend
+## Fluxo de Operação
 
-## Customer
+### Vendedor
 
-Responsável por:
+Na tela de operação principal, o vendedor enxerga o estado local, acessa atalhos para registrar venda, comprar de outra loja, acompanhar pedidos e abrir a carteira. No catálogo, ele pode:
 
-- importar o catálogo da loja
-- consultar produtos localmente
-- montar pedidos
-- gerar o QR Code do pedido
-- acompanhar o histórico de pedidos vinculado à conta
+- criar e editar categorias e produtos localmente
+- ajustar estoque sem depender de resposta imediata do servidor
+- gerar um QR Code com o catálogo da loja
+- ler o QR Code de um pedido criado pelo cliente
+- confirmar a venda e disparar a sincronização quando houver internet
 
-## Catálogo
+### Cliente
 
-O catálogo é a base do fluxo offline entre cliente e vendedor.
-
-Comportamento atual:
-
-- o vendedor consulta ou monta o catálogo da loja
-- as alterações são salvas localmente
-- o app gera fila local de sincronização para categorias, produtos e estoque
-- o vendedor pode compartilhar o catálogo por QR Code
-- o cliente importa o catálogo para o próprio aparelho e continua a consulta localmente
-
-O catálogo pode vir de duas fontes:
-
-- backend, quando há conexão
-- armazenamento local, quando o aparelho opera offline
-
-## Pedidos
-
-O fluxo de pedidos preserva a venda mesmo sem conectividade constante.
-
-Comportamento atual:
-
-- o cliente monta um pedido a partir do catálogo importado
-- o app gera um `localOrderId` para rastrear a operação
-- o pedido pode ser transformado em QR Code
-- o vendedor escaneia e confirma a venda
-- a confirmação comercial fica salva localmente no aparelho do vendedor
-- quando houver conexão, o pedido é sincronizado com o `sales-service`
-
-O app também consegue carregar pedidos já registrados no backend para o usuário autenticado.
-
-## QR Code
-
-O QR Code é o principal mecanismo de troca de contexto entre os aparelhos.
-
-O aplicativo trabalha com:
-
-- QR Code de catálogo, usado para importar produtos da loja
-- QR Code de pedido, usado para transferir o pedido do cliente para o vendedor
-- QR Code de confirmação de pedido, usado para compartilhar o resultado local ou sincronizado da venda
-
-Esse formato permite que a operação continue mesmo quando os aparelhos não conseguem se comunicar diretamente com o backend.
+O cliente pode importar o catálogo de uma loja por QR Code, montar o carrinho no aparelho, gerar o QR do pedido e apresentar esse código ao vendedor para confirmação. Depois, acompanha os pedidos e o histórico sincronizado.
 
 ## Persistência Local
 
-O estado local do aplicativo é parte central da arquitetura.
+O app usa SQLite para garantir continuidade operacional. As migrações criam e mantêm tabelas locais para:
 
-Persistência atual:
+- `categories`
+- `products`
+- `orders`
+- `order_items`
+- `catalog_sync_queue`
+- `order_sync_queue`
 
-- `Expo Secure Store` para token, usuário e identificador local do aparelho
-- `Expo SQLite` para catálogo, pedidos e filas de sincronização
+Além do armazenamento dos dados de operação, o app mantém filas locais com status como `PENDING`, `SYNCING`, `SYNCED`, `FAILED` e `REJECTED`, permitindo retentativas automáticas e tratamento de conflitos.
 
-Na prática, isso permite:
+## Integração com a API em `global-java-fresh`
 
-- manter sessão autenticada no aparelho
-- continuar acessando catálogo local
-- guardar pedidos confirmados antes da sincronização
-- registrar falhas, tentativas e reenvios de sincronização
-
-## Sincronização Posterior
-
-O aplicativo possui fila local para sincronização de catálogo e pedidos.
-
-## Catálogo
-
-Cada alteração local de catálogo gera um item de fila com `operationId`. Quando há conectividade, o app envia essas alterações para `POST /catalog/sync`.
-
-O backend responde aplicando, rejeitando ou tratando cada operação como duplicada. Depois disso, o app atualiza o estado local e mantém rastreio das falhas que exigem nova tentativa.
-
-## Pedidos
-
-Pedidos confirmados offline entram em uma fila separada. Quando o vendedor volta a ficar online, o app envia o lote para `POST /order/sync`.
-
-Cada pedido usa `localOrderId` como referência de deduplicação. Isso evita recriação da mesma venda quando o envio precisa ser repetido.
-
-## Estratégia Operacional
-
-O motor de sincronização:
-
-- detecta conectividade
-- agenda tentativas automaticamente
-- controla estados como pendente, sincronizando, sincronizado, falho e rejeitado
-- preserva os dados locais mesmo quando a sincronização falha
-
-## Cenários de Conectividade
-
-## Cliente online e vendedor online
-
-- o cliente importa ou consulta o catálogo normalmente
-- o pedido é criado com menor latência
-- o vendedor confirma a venda
-- a sincronização com o backend pode acontecer logo em seguida
-
-## Cliente offline e vendedor online
-
-- o cliente usa o catálogo já importado no aparelho
-- o pedido é montado localmente
-- o vendedor escaneia o QR Code e confirma a venda
-- como o vendedor está conectado, a sincronização pode acontecer rapidamente
-
-## Cliente online e vendedor offline
-
-- o cliente consegue consultar o catálogo
-- o vendedor ainda consegue receber o pedido e confirmar localmente
-- o pedido fica salvo no aparelho do vendedor até a reconexão
-- a sincronização ocorre depois
-
-## Cliente offline e vendedor offline
-
-- o cliente usa o catálogo salvo localmente
-- o pedido é gerado por QR Code
-- o vendedor confirma a venda sem depender do backend
-- a operação fica preservada no armazenamento local
-- a sincronização acontece quando a internet voltar
-
-Em todos os cenários, o aplicativo prioriza a continuidade comercial e deixa a reconciliação remota para quando a conectividade estiver disponível.
-
-## Integração com o Backend
-
-O app mobile conversa com dois serviços principais:
-
-- `signal-auth-service`
-- `signal-sales-service`
-
-Uso atual:
-
-- autenticação por `POST /auth/login`
-- cadastro por `POST /auth/register/seller` e `POST /auth/register/customer`
-- recuperação do contexto autenticado por `GET /auth/me`
-- atualização opcional do `deviceId` do vendedor por `PATCH /device/me`
-- consulta de catálogo por `/catalog/me` e `/catalog/store/{storeId}`
-- criação de pedido online por `POST /order`
-- sincronização posterior por `POST /catalog/sync` e `POST /order/sync`
-
-## Próximo Passo Arquitetural
-
-O fluxo financeiro do OffPay será expandido com um `payment-service` separado.
-
-Esse serviço ainda não está implementado no app como etapa funcional concluída. O papel previsto é:
-
-- consumir eventos publicados pelo `sales-service`
-- simular um gateway de pagamento
-- tratar o processamento financeiro apenas online
-- manter separado o momento da venda local do momento da confirmação financeira
-
-## Execução Local
-
-Instalação:
-
-```bash
-npm install
-```
-
-Variáveis de ambiente:
+O mobile conversa com os microsserviços Java por meio de quatro URLs públicas configuradas em ambiente:
 
 ```env
 EXPO_PUBLIC_AUTH_API_URL=
 EXPO_PUBLIC_SALES_API_URL=
+EXPO_PUBLIC_PAYMENT_API_URL=
+EXPO_PUBLIC_ANALYTICS_API_URL=
 ```
 
-Inicialização:
+Essas URLs são consumidas em `src/shared/lib/api.ts`, que centraliza `fetch`, serialização JSON e envio do token JWT salvo com `Secure Store`.
+
+### 1. Autenticação
+
+O app usa o `signal-auth-service` da pasta `global-java-fresh` para:
+
+- `POST /auth/login`
+- `POST /auth/register/seller`
+- `POST /auth/register/customer`
+- `GET /auth/me`
+- `PATCH /device/me`
+
+Na prática, isso cobre login, cadastro, recuperação do perfil autenticado e vínculo do dispositivo do vendedor.
+
+### 2. Catálogo e Pedidos
+
+O `signal-sales-service` concentra a operação comercial do app:
+
+- `GET /catalog/me`
+- `GET /catalog/store/{storeId}`
+- `POST /catalog/sync`
+- `POST /order`
+- `POST /order/sync`
+- `GET /order/me/page`
+- `GET /order/me/sales/page`
+- `GET /order/me/purchases/page`
+- `GET /order/{id}`
+
+Esse é o núcleo do comportamento offline-first. O mobile registra alterações localmente e, quando a conexão volta, envia lotes de catálogo e pedidos para os endpoints de sincronização.
+
+### 3. Carteira e Pagamentos
+
+O `signal-payment-service` atende a parte financeira:
+
+- `GET /wallet/me`
+- `GET /wallet/personal/me`
+- `POST /wallet/deposit`
+- `POST /wallet/settle`
+- `GET /wallet/transactions/me/page`
+- `GET /wallet/transactions/personal/me/page`
+- `GET /payment/transactions/me/page`
+- `GET /payment/transactions/order/{orderId}`
+
+No app, isso sustenta saldo, histórico de movimentações e consulta de transações associadas aos pedidos.
+
+### 4. Analytics e IA
+
+O `signal-analytics-ai-service` complementa a operação com leitura gerencial:
+
+- `GET /analytics/me/summary`
+- `GET /analytics/seller/summary`
+- `GET /analytics/customer/summary`
+- `GET /analytics/seller/top-products`
+- `GET /analytics/customer/spending`
+- `POST /ai/insights/ask`
+
+Com isso, o mobile mostra resumos por perfil e permite enviar perguntas para a camada de insights com IA.
+
+## Como a Sincronização Funciona
+
+O motor de sincronização local:
+
+- separa catálogo e pedidos por escopo
+- evita execuções concorrentes
+- faz retentativas automáticas em falhas transitórias
+- marca rejeições quando o backend devolve inconsistências de negócio
+- atualiza o catálogo local após sync bem-sucedido
+- reconcilia IDs locais com IDs remotos quando necessário
+
+Esse comportamento está concentrado em [src/domains/sync/services/sync-engine.ts](/c:/Users/mateu/Desktop/GS-26/global-mobile/src/domains/sync/services/sync-engine.ts).
+
+## Executando o Projeto
 
 ```bash
-npm start
+npm install
+npm run start
 ```
 
-Atalhos disponíveis:
+Atalhos úteis:
 
 ```bash
 npm run android
 npm run ios
 npm run web
+npm run lint
 ```
 
-## Estado Atual
+## Backend Relacionado
 
-Estado atual do aplicativo:
+Para rodar a experiência completa, o mobile depende do backend em `../global-java-fresh`, organizado nestes serviços:
 
-- estratégia offline-first ativa
-- persistência local com SQLite e Secure Store
-- suporte aos perfis seller e customer
-- troca de catálogo e pedido por QR Code
-- sincronização posterior de catálogo e pedidos
-- sem dependência obrigatória de modo offline manual, `offlineToken` ou ```offlineSession`
+- `signal-auth-service`
+- `signal-sales-service`
+- `signal-payment-service`
+- `signal-analytics-ai-service`
 
-A evolução prevista é integrar o app ao futuro `payment-service`, mantendo o pagamento como etapa online posterior à sincronização da venda.
+As portas documentadas no backend são:
+
+- Auth: `http://localhost:8081`
+- Sales: `http://localhost:8082`
+- Payment: `http://localhost:8083`
+- Analytics: `http://localhost:8084`
+
+## Resumo
+
+O valor deste app está em permitir que a operação continue acontecendo no mundo real, mesmo em contexto instável. Em vez de tratar o offline como exceção, o OffPay Mobile organiza catálogo, pedido, confirmação e sincronização como parte natural do fluxo de venda.

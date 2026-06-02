@@ -73,6 +73,7 @@ export function useSyncStatus(scope: SyncScope = "all") {
                     isConnected: network.isConnected,
                     canSync,
                     pullCatalogAfterSync: true,
+                    forceRetry: true,
                 });
                 await refresh();
                 return result;
@@ -82,6 +83,7 @@ export function useSyncStatus(scope: SyncScope = "all") {
                 const result = await syncOrders({
                     isConnected: network.isConnected,
                     canSync,
+                    forceRetry: true,
                 });
                 await refresh();
                 return result;
@@ -91,6 +93,7 @@ export function useSyncStatus(scope: SyncScope = "all") {
                 isConnected: network.isConnected,
                 canSync,
                 pullCatalogAfterSync: true,
+                forceRetry: true,
             });
             await refresh();
             return result;
@@ -113,7 +116,6 @@ export function useSyncStatus(scope: SyncScope = "all") {
         ...status,
         canSync,
         network,
-        deviceId: user?.deviceId ?? null,
         loading,
         syncingNow,
         refresh,

@@ -8,7 +8,6 @@ export type UserResponse = {
     phone: string;
     role: UserRole;
     storeName: string | null;
-    deviceId: string | null;
     storeId?: string | null;
 };
 
@@ -30,7 +29,6 @@ export type RegisterSellerRequest = {
     phone: string;
     storeName: string;
     storeCategory: string;
-    deviceId: string;
 };
 
 export type RegisterCustomerRequest = {
@@ -39,9 +37,4 @@ export type RegisterCustomerRequest = {
     password: string;
     cpf: string;
     phone: string;
-};
-
-export type DeviceStatusResponse = {
-    deviceId: string;
-    active: boolean;
 };

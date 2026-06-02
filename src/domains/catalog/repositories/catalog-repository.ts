@@ -2,6 +2,7 @@ import { CatalogCategory, CatalogProduct, CatalogQrPayload, CatalogResponse, Cat
 import { randomUUID } from "expo-crypto";
 import { db } from "@/src/shared/database/database";
 import { getLocalSessionContext } from "@/src/shared/lib/local-session-context";
+import { countPendingCatalogChanges, countRejectedCatalogChanges } from "@/src/domains/sync/repositories/sync-queue-repository";
 
 type LocalCategoryRow = {
     id: string;
@@ -89,6 +90,15 @@ export async function saveCatalog(catalog: CatalogResponse) {
     const context = await getLocalSessionContext();
 
     if (!context) {
+        return;
+    }
+
+    const [pendingCatalogChanges, rejectedCatalogChanges] = await Promise.all([
+        countPendingCatalogChanges(),
+        countRejectedCatalogChanges(),
+    ]);
+
+    if ((pendingCatalogChanges > 0 || rejectedCatalogChanges > 0) && context.role === "SELLER") {
         return;
     }
 
@@ -640,16 +650,30 @@ export async function reconcileProductIdReference(localProductId: string, remote
         return;
     }
 
-    await db.withTransactionAsync(async () => {
-        const orderIdsToRequeue = new Set<string>();
+    const orderIdsToRequeue = new Set<string>();
+    const remoteProductAlreadyExists = await db.getFirstAsync<{ id: string }>(
+        `
+        SELECT id
+        FROM products
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [remoteProductId],
+    );
 
+    await db.withTransactionAsync(async () => {
         await db.runAsync(
             `
             UPDATE products
             SET id = ?
             WHERE id = ?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM products remote_product
+                  WHERE remote_product.id = ?
+              )
             `,
-            [remoteProductId, localProductId],
+            [remoteProductId, localProductId, remoteProductId],
         );
 
         await db.runAsync(
@@ -660,6 +684,10 @@ export async function reconcileProductIdReference(localProductId: string, remote
             `,
             [remoteProductId, localProductId],
         );
+
+        if (remoteProductAlreadyExists) {
+            await db.runAsync(`DELETE FROM products WHERE id = ?`, [localProductId]);
+        }
 
         const catalogQueueRows = await db.getAllAsync<CatalogSyncQueuePayloadRow>(
             `

@@ -8,7 +8,7 @@ import { getMyCatalog } from "@/src/domains/catalog/services/catalog-service";
 import { saveRemoteOrders } from "@/src/domains/order/repositories/order-repository";
 import { getMyPurchases, getMySales } from "@/src/domains/order/services/order-service";
 import { clearLocalWorkspace } from "@/src/shared/database/repositories/local-workspace-repository";
-import { clearSession, getOrCreateDeviceId, getStoredSessionContext, getStoredUser, getToken, saveSessionContext, saveToken, saveUser, type StoredSessionContext } from "@/src/shared/lib/secure-storage";
+import { clearSession, getStoredSessionContext, getStoredUser, getToken, saveSessionContext, saveToken, saveUser, type StoredSessionContext } from "@/src/shared/lib/secure-storage";
 
 type AuthContextValue = {
     user: UserResponse | null;
@@ -17,7 +17,7 @@ type AuthContextValue = {
     loadingMessage: string;
     isAuthenticated: boolean;
     login: (body: LoginRequest) => Promise<void>;
-    signupSeller: (body: Omit<RegisterSellerRequest, "deviceId">) => Promise<void>;
+    signupSeller: (body: RegisterSellerRequest) => Promise<void>;
     signupCustomer: (body: RegisterCustomerRequest) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
@@ -157,17 +157,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, [prepareWorkspaceForUser, syncSessionContext]);
 
-    const signupSeller = useCallback(async (body: Omit<RegisterSellerRequest, "deviceId">) => {
+    const signupSeller = useCallback(async (body: RegisterSellerRequest) => {
         setLoading(true);
         setLoadingMessage("Preparando seus dados");
 
         try {
-            const deviceId = await getOrCreateDeviceId();
-
-            const response = await registerSeller({
-                ...body,
-                deviceId,
-            });
+            const response = await registerSeller(body);
 
             setUser(response.user);
             setToken(response.token);

@@ -18,12 +18,10 @@ export type OrderItemRequest = {
 
 export type CreateOrderRequest = {
     storeId?: string;
-    deviceId?: string;
     items: OrderItemRequest[];
 };
 
 export type OrderSyncRequest = {
-    deviceId: string;
     orders: {
         localOrderId: string;
         customerId?: string;
@@ -47,7 +45,6 @@ export type OrderResponse = {
     storeId: string;
     customerId?: string | null;
     sellerId?: string | null;
-    deviceId?: string | null;
     orderStatus: string;
     paymentStatus: string;
     syncStatus: string;

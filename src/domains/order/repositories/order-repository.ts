@@ -55,6 +55,22 @@ export type LocalOrderSyncIssue = {
     updatedAt: string;
 };
 
+type QueuedOrderRepairRow = {
+    id: string;
+    operation_id: string;
+    payload_json: string;
+    status: string;
+};
+
+type ProductIdRow = {
+    id: string;
+};
+
+type OrderItemRepairRow = {
+    product_name: string;
+    unit_price: number;
+};
+
 function now() {
     return new Date().toISOString();
 }
@@ -252,7 +268,6 @@ export async function createLocalOfflineOrder(params: {
     storeId?: string | null;
     customerId?: string | null;
     sellerId?: string | null;
-    deviceId: string;
     items: OrderItemRequest[];
     confirmedBySeller?: boolean;
     offlineCreatedAt?: string | null;
@@ -312,7 +327,7 @@ export async function createLocalOfflineOrder(params: {
                 owner_role
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, params.deviceId, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.confirmedBySeller ? offlineCreatedAt : null, getServerSyncTimestamp(params.syncStatus, createdAt), getServerSyncTimestamp(params.syncStatus, createdAt), context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
+            [orderId, params.remoteOrderId ?? null, localOrderId, params.storeId ?? null, params.customerId ?? null, params.sellerId ?? null, null, params.orderStatus ?? (params.confirmedBySeller ? "CONFIRMED" : "CREATED"), params.paymentStatus ?? "PENDING_PAYMENT", params.syncStatus ?? "PENDING", 0, createdAt, createdAt, offlineCreatedAt, params.confirmedBySeller ? offlineCreatedAt : null, getServerSyncTimestamp(params.syncStatus, createdAt), getServerSyncTimestamp(params.syncStatus, createdAt), context?.userId ?? params.customerId ?? null, context?.storeId ?? params.storeId ?? null, context?.role ?? null],
         );
 
         for (const item of params.items) {
@@ -375,7 +390,7 @@ export async function createLocalOfflineOrder(params: {
     };
 }
 
-export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; sellerId?: string | null; sellerDeviceId: string }) {
+export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; sellerId?: string | null }) {
     const existing = await getLocalOrderByLocalId(params.payload.localOrderId);
 
     if (existing) {
@@ -392,7 +407,6 @@ export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; 
         storeId: params.payload.storeId,
         customerId: params.payload.customerId ?? null,
         sellerId: params.sellerId ?? null,
-        deviceId: params.sellerDeviceId,
         items: params.payload.items,
         confirmedBySeller: true,
         offlineCreatedAt: params.payload.createdAt,
@@ -403,7 +417,7 @@ export async function createLocalOrderFromQr(params: { payload: OrderQrPayload; 
     });
 }
 
-export async function createLocalOrderFromConfirmationQr(params: { payload: OrderConfirmationQrPayload; customerDeviceId: string }) {
+export async function createLocalOrderFromConfirmationQr(params: { payload: OrderConfirmationQrPayload }) {
     const existing = await getLocalOrderByLocalId(params.payload.localOrderId);
 
     if (existing) {
@@ -437,7 +451,6 @@ export async function createLocalOrderFromConfirmationQr(params: { payload: Orde
         storeId: params.payload.storeId,
         customerId: params.payload.customerId ?? null,
         sellerId: params.payload.sellerId ?? null,
-        deviceId: params.customerDeviceId,
         items: params.payload.items,
         confirmedBySeller: true,
         offlineCreatedAt: params.payload.confirmedAt,
@@ -606,7 +619,6 @@ export async function buildOrderConfirmationPayloadFromLocal(localOrderId: strin
         storeId: order.store_id,
         customerId: order.customer_id,
         sellerId: order.seller_id,
-        sellerDeviceId: order.device_id,
         remoteOrderId: order.remote_order_id,
         confirmedAt: getConfirmationTimestamp(order),
         totalAmount: order.total_amount,
@@ -667,6 +679,141 @@ export async function restoreLocalStockForRejectedOrder(localOrderId: string) {
     }
 }
 
+async function findLocalProductIdByNameAndPrice(productName: string, unitPrice: number) {
+    const context = await getLocalSessionContext();
+
+    if (!context) {
+        return null;
+    }
+
+    return db.getFirstAsync<ProductIdRow>(
+        `
+        SELECT id
+        FROM products
+        WHERE LOWER(name) = LOWER(?)
+          AND ABS(price - ?) < 0.01
+          AND active = 1
+          AND (owner_user_id = ? OR (? IS NOT NULL AND owner_store_id = ?))
+        ORDER BY updated_at DESC
+        LIMIT 1
+        `,
+        [productName, unitPrice, context.userId, context.storeId, context.storeId],
+    );
+}
+
+async function localProductExists(productId: string) {
+    const product = await db.getFirstAsync<ProductIdRow>(
+        `
+        SELECT id
+        FROM products
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [productId],
+    );
+
+    return !!product;
+}
+
+export async function repairQueuedOrderProductReferences() {
+    const context = await getLocalSessionContext();
+
+    if (!context?.storeId) {
+        return;
+    }
+
+    const queueRows = await db.getAllAsync<QueuedOrderRepairRow>(
+        `
+        SELECT id, operation_id, payload_json, status
+        FROM order_sync_queue
+        WHERE owner_role = 'SELLER'
+          AND owner_store_id = ?
+          AND status IN ('PENDING', 'FAILED', 'REJECTED', 'SYNCING')
+        ORDER BY created_at ASC
+        `,
+        [context.storeId],
+    );
+
+    for (const row of queueRows) {
+        const payload = JSON.parse(row.payload_json) as PendingOrderPayload;
+        let repaired = false;
+
+        const repairedItems = [];
+
+        for (const item of payload.items) {
+            if (await localProductExists(item.productId)) {
+                repairedItems.push(item);
+                continue;
+            }
+
+            const orderItem = await db.getFirstAsync<OrderItemRepairRow>(
+                `
+                SELECT oi.product_name, oi.unit_price
+                FROM order_items oi
+                INNER JOIN orders o ON o.id = oi.order_id
+                WHERE o.local_order_id = ?
+                  AND oi.product_id = ?
+                LIMIT 1
+                `,
+                [payload.localOrderId, item.productId],
+            );
+
+            if (!orderItem) {
+                repairedItems.push(item);
+                continue;
+            }
+
+            const repairedProduct = await findLocalProductIdByNameAndPrice(orderItem.product_name, orderItem.unit_price);
+
+            if (!repairedProduct?.id) {
+                repairedItems.push(item);
+                continue;
+            }
+
+            await db.runAsync(`UPDATE order_items SET product_id = ? WHERE product_id = ?`, [repairedProduct.id, item.productId]);
+            repairedItems.push({
+                ...item,
+                productId: repairedProduct.id,
+            });
+            repaired = true;
+        }
+
+        if (!repaired) {
+            continue;
+        }
+
+        const timestamp = now();
+
+        await db.runAsync(
+            `
+            UPDATE order_sync_queue
+            SET payload_json = ?,
+                status = 'PENDING',
+                attempts = 0,
+                last_error = NULL,
+                next_retry_at = NULL,
+                synced_at = NULL,
+                updated_at = ?
+            WHERE id = ?
+            `,
+            [JSON.stringify({ ...payload, items: repairedItems }), timestamp, row.id],
+        );
+
+        await db.runAsync(
+            `
+            UPDATE orders
+            SET sync_status = 'PENDING',
+                updated_at = ?,
+                server_synced_at = NULL,
+                synced_at = NULL
+            WHERE local_order_id = ?
+              AND sync_status = 'REJECTED'
+            `,
+            [timestamp, payload.localOrderId],
+        );
+    }
+}
+
 export async function saveRemoteOrder(order: OrderResponse) {
     await db.withTransactionAsync(async () => {
         const context = await getLocalSessionContext();
@@ -704,7 +851,7 @@ export async function saveRemoteOrder(order: OrderResponse) {
                 owner_role
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
-            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, order.deviceId ?? null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, confirmedAt, serverSyncedAt, serverSyncedAt ?? persistedUpdatedAt, context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
+            [targetOrderId, order.id, targetLocalOrderId, order.storeId, order.customerId ?? null, order.sellerId ?? null, null, order.orderStatus, order.paymentStatus, order.syncStatus, order.totalAmount, order.createdAt, persistedUpdatedAt, order.offlineCreatedAt ?? null, confirmedAt, serverSyncedAt, serverSyncedAt ?? persistedUpdatedAt, context?.userId ?? order.customerId ?? null, context?.storeId ?? order.storeId ?? null, context?.role ?? null],
         );
 
         if (!order.items?.length) {

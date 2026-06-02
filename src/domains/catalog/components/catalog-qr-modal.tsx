@@ -1,4 +1,4 @@
-import { Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import { BottomSheetModal } from "@/src/shared/components/ui/bottom-sheet-modal";
@@ -9,10 +9,25 @@ type CatalogQrModalProps = {
     qrValue: string | null;
     categoryCount: number;
     productCount: number;
+    preparing?: boolean;
     onClose: () => void;
 };
 
-export function CatalogQrModal({ visible, storeId, qrValue, categoryCount, productCount, onClose }: CatalogQrModalProps) {
+export function CatalogQrModal({ visible, storeId, qrValue, categoryCount, productCount, preparing = false, onClose }: CatalogQrModalProps) {
+    if (preparing) {
+        return (
+            <BottomSheetModal visible={visible} eyebrow="QR Code" title="Preparando catálogo" onClose={onClose}>
+                <View className="items-center rounded-3xl border border-border bg-card p-6">
+                    <ActivityIndicator color="#0f172a" size="large" />
+
+                    <Text className="mt-5 text-center text-base font-black text-card-foreground">Gerando QR otimizado</Text>
+
+                    <Text className="mt-2 text-center text-sm leading-6 text-muted-foreground">Compactando os produtos ativos para o cliente escanear sem travar a tela.</Text>
+                </View>
+            </BottomSheetModal>
+        );
+    }
+
     if (!storeId || !qrValue) {
         return (
             <BottomSheetModal visible={visible} eyebrow="QR Code" title="Catálogo" onClose={onClose}>
@@ -30,7 +45,7 @@ export function CatalogQrModal({ visible, storeId, qrValue, categoryCount, produ
             <View className="items-center">
                 <View className="rounded-[32px] border border-border bg-card p-3">
                     <View className="rounded-3xl bg-white p-5">
-                        <QRCode value={qrValue} size={240} color="#000000" backgroundColor="#ffffff" />
+                        <QRCode value={qrValue} size={220} color="#000000" backgroundColor="#ffffff" />
                     </View>
                 </View>
 

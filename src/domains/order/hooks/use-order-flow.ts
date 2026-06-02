@@ -9,7 +9,6 @@ import { buildOrderQrPayload, encodeOrderQr } from "@/src/domains/order/utils/or
 import { countPendingOrderSyncQueue } from "@/src/domains/sync/repositories/sync-queue-repository";
 import { scheduleSync, syncAll } from "@/src/domains/sync/services/sync-engine";
 import { useNetworkStatus } from "@/src/shared/hooks/use-network-status";
-import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
 
 export type CartItem = {
     product: CatalogProduct;
@@ -146,7 +145,6 @@ export function useOrderFlow(storeId?: string | null) {
             return null;
         }
 
-        const deviceId = await getOrCreateDeviceId();
         const localOrderId = randomUUID();
         const createdAt = new Date().toISOString();
 
@@ -166,7 +164,6 @@ export function useOrderFlow(storeId?: string | null) {
             localOrderId,
             storeId,
             customerId: user.id,
-            deviceId,
             createdAt,
             totalAmount: qrTotalAmount,
             items,
@@ -185,7 +182,6 @@ export function useOrderFlow(storeId?: string | null) {
             storeId,
             customerId: user.id,
             sellerId: null,
-            deviceId,
             items,
             confirmedBySeller: false,
             offlineCreatedAt: createdAt,
@@ -242,6 +238,7 @@ export function useOrderFlow(storeId?: string | null) {
                 isConnected: network.canAttemptRemote,
                 canSync: user.role === "SELLER",
                 pullCatalogAfterSync: true,
+                forceRetry: true,
             });
             const feedbackMessage = result.orders.rejected > 0 ? result.orders.message : result.catalog.rejected > 0 ? result.catalog.message : result.orders.synced > 0 ? result.orders.message : result.catalog.message;
 
@@ -289,6 +286,7 @@ export function useOrderFlow(storeId?: string | null) {
             isConnected: network.canAttemptRemote,
             canSync: user.role === "SELLER",
             pullCatalogAfterSync: true,
+            forceRetry: true,
             onComplete: async () => {
                 await refreshPendingOrderCount();
             },

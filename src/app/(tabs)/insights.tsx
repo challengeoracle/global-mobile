@@ -4,8 +4,10 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshCo
 import { useColorScheme } from "nativewind";
 
 import { InsightAssistantCard } from "@/src/domains/insights/components/insight-assistant-card";
+import { InsightChartCard } from "@/src/domains/insights/components/insight-chart-card";
 import { InsightMetricCard } from "@/src/domains/insights/components/insight-metric-card";
 import { InsightOfflineBlock } from "@/src/domains/insights/components/insight-offline-block";
+import { InsightPeriodCard } from "@/src/domains/insights/components/insight-period-card";
 import { InsightSummaryCard } from "@/src/domains/insights/components/insight-summary-card";
 import { useInsights } from "@/src/domains/insights/hooks/use-insights";
 import { PageHeader } from "@/src/shared/components/ui/page-header";
@@ -16,7 +18,22 @@ type InsightTab = "chat" | "indicadores";
 export default function InsightsScreen() {
     const { colorScheme } = useColorScheme();
     const iconColor = colorScheme === "dark" ? "#f8fafc" : "#0f172a";
-    const { overview, assistantAnswer, loading, refreshing, asking, error, isOfflineBlocked, loadInsights, refreshInsights, submitQuestion } = useInsights();
+    const {
+        overview,
+        periodSummary,
+        chart,
+        selectedPeriod,
+        assistantAnswer,
+        loading,
+        refreshing,
+        asking,
+        error,
+        isOfflineBlocked,
+        loadInsights,
+        refreshInsights,
+        changePeriod,
+        submitQuestion,
+    } = useInsights();
     const [activeTab, setActiveTab] = useState<InsightTab>("chat");
 
     useFocusEffect(
@@ -60,7 +77,7 @@ export default function InsightsScreen() {
                                         asking={asking}
                                         answer={assistantAnswer}
                                         onSubmit={submitQuestion}
-                                        promptPlaceholder={overview?.role === "SELLER" ? "Ex.: Tenho saldo pendente?" : "Ex.: Quanto eu gastei?"}
+                                        promptPlaceholder={overview?.role === "SELLER" ? "Ex.: Quanto vendi hoje?" : "Ex.: Quanto eu gastei hoje?"}
                                     />
                                     {error ? <Text className="mt-4 rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">{error}</Text> : null}
                                 </View>
@@ -69,6 +86,8 @@ export default function InsightsScreen() {
                                     {overview ? (
                                         <>
                                             <InsightSummaryCard overview={overview} />
+
+                                            <InsightPeriodCard selectedPeriod={selectedPeriod} summary={periodSummary} onChangePeriod={changePeriod} />
 
                                             <View className="mt-6 flex-row flex-wrap gap-3">
                                                 <InsightMetricCard label={overview.primaryAmountLabel} value={formatCurrency(overview.primaryAmount)} highlight />
@@ -86,6 +105,8 @@ export default function InsightsScreen() {
                                                     description={overview.topProductQuantity ? `${overview.topProductQuantity} unidade(s)` : "Os próximos pedidos ajudam a formar esse ranking."}
                                                 />
                                             </View>
+
+                                            <InsightChartCard chart={chart} primaryLabel={overview.role === "SELLER" ? "Vendas por dia" : "Gastos por dia"} />
 
                                             {overview.message ? <Text className="mt-4 rounded-2xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">{overview.message}</Text> : null}
                                         </>

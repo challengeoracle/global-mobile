@@ -3,7 +3,6 @@ import * as SecureStore from "expo-secure-store";
 const KEYS = {
     token: "signal.jwt",
     user: "signal.user",
-    deviceId: "signal.device_id",
     sessionContext: "signal.session_context",
 };
 
@@ -39,28 +38,6 @@ export async function getStoredSessionContext() {
     return raw ? (JSON.parse(raw) as StoredSessionContext) : null;
 }
 
-export async function getOrCreateDeviceId() {
-    const stored = await SecureStore.getItemAsync(KEYS.deviceId);
-
-    if (stored) {
-        return stored;
-    }
-
-    const generated = `signal-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    await SecureStore.setItemAsync(KEYS.deviceId, generated);
-
-    return generated;
-}
-
 export async function clearSession() {
     await Promise.all([SecureStore.deleteItemAsync(KEYS.token), SecureStore.deleteItemAsync(KEYS.user), SecureStore.deleteItemAsync(KEYS.sessionContext)]);
-}
-
-export async function regenerateDeviceId() {
-    const generated = `offpay-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    await SecureStore.setItemAsync(KEYS.deviceId, generated);
-
-    return generated;
 }

@@ -1,6 +1,9 @@
 import { analyticsRequest } from "@/src/shared/lib/api";
 
 import {
+    AnalyticsChartResponse,
+    AnalyticsPeriod,
+    AnalyticsPeriodSummaryResponse,
     AnalyticsSummaryResponse,
     CustomerSpendingResponse,
     CustomerSummaryResponse,
@@ -28,6 +31,14 @@ export function getSellerTopProducts() {
 
 export function getCustomerSpending() {
     return analyticsRequest<CustomerSpendingResponse>("/analytics/customer/spending", { auth: true });
+}
+
+export function getMyPeriodSummary(period: AnalyticsPeriod) {
+    return analyticsRequest<AnalyticsPeriodSummaryResponse>(`/analytics/me/summary/period?period=${period}`, { auth: true });
+}
+
+export function getMyChart(days = 7) {
+    return analyticsRequest<AnalyticsChartResponse>(`/analytics/me/chart?days=${days}`, { auth: true });
 }
 
 export function askInsight(question: string) {

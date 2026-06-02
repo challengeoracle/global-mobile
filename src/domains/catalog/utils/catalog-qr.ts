@@ -1,6 +1,6 @@
 import { CatalogCategory, CatalogQrPayload } from "@/src/domains/catalog/types/catalog";
 
-type CompactCatalogQrPayload = {
+type CompactCatalogQrPayloadV1 = {
     t: "OC";
     v: 1;
     s: string;
@@ -17,24 +17,45 @@ type CompactCatalogQrPayload = {
     }[];
 };
 
-export function buildCatalogQrPayload(params: { storeId: string; categories: CatalogCategory[] }): CompactCatalogQrPayload {
+type CompactCatalogQrPayloadV2 = {
+    t: "OC";
+    v: 2;
+    s: string;
+    g: string;
+    c: [string, string, [string, string, number, number][]][];
+};
+
+type CompactCatalogQrPayload = CompactCatalogQrPayloadV1 | CompactCatalogQrPayloadV2;
+
+function normalizePrice(price: number) {
+    return Math.round(price * 100) / 100;
+}
+
+function decodeGeneratedAt(value: string) {
+    const timestamp = Number.parseInt(value, 36);
+
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+        return new Date(timestamp).toISOString();
+    }
+
+    return value;
+}
+
+export function buildCatalogQrPayload(params: { storeId: string; categories: CatalogCategory[] }): CompactCatalogQrPayloadV2 {
     return {
         t: "OC",
-        v: 1,
+        v: 2,
         s: params.storeId,
-        g: new Date().toISOString(),
-        c: params.categories.map((category) => ({
-            i: category.id,
-            n: category.name,
-            p: category.products
-                .filter((product) => product.active)
-                .map((product) => ({
-                    i: product.id,
-                    n: product.name,
-                    pr: product.price,
-                    q: product.stockQuantity,
-                })),
-        })),
+        g: Date.now().toString(36),
+        c: params.categories
+            .filter((category) => category.active)
+            .map((category) => [
+                category.id,
+                category.name,
+                category.products
+                    .filter((product) => product.active)
+                    .map((product) => [product.id, product.name, normalizePrice(product.price), product.stockQuantity]),
+            ]),
     };
 }
 
@@ -42,17 +63,7 @@ export function encodeCatalogQr(payload: CompactCatalogQrPayload) {
     return JSON.stringify(payload);
 }
 
-export function decodeCatalogQr(value: string): CatalogQrPayload {
-    const payload = JSON.parse(value) as CompactCatalogQrPayload;
-
-    if (payload.t !== "OC" || payload.v !== 1) {
-        throw new Error("QR Code de catálogo inválido.");
-    }
-
-    if (!payload.s || !Array.isArray(payload.c)) {
-        throw new Error("Catálogo inválido.");
-    }
-
+function decodeCatalogQrV1(payload: CompactCatalogQrPayloadV1): CatalogQrPayload {
     return {
         type: "OFFPAY_CATALOG",
         version: 1,
@@ -71,4 +82,43 @@ export function decodeCatalogQr(value: string): CatalogQrPayload {
             })),
         })),
     };
+}
+
+function decodeCatalogQrV2(payload: CompactCatalogQrPayloadV2): CatalogQrPayload {
+    return {
+        type: "OFFPAY_CATALOG",
+        version: 1,
+        storeId: payload.s,
+        generatedAt: decodeGeneratedAt(payload.g),
+        categories: payload.c.map(([categoryId, categoryName, products]) => ({
+            id: categoryId,
+            name: categoryName,
+            description: null,
+            products: products.map(([productId, productName, price, stockQuantity]) => ({
+                id: productId,
+                name: productName,
+                description: null,
+                price,
+                stockQuantity,
+            })),
+        })),
+    };
+}
+
+export function decodeCatalogQr(value: string): CatalogQrPayload {
+    const payload = JSON.parse(value) as CompactCatalogQrPayload;
+
+    if (payload.t !== "OC" || ![1, 2].includes(payload.v)) {
+        throw new Error("QR Code de catálogo inválido.");
+    }
+
+    if (!payload.s || !Array.isArray(payload.c)) {
+        throw new Error("Catálogo inválido.");
+    }
+
+    if (payload.v === 1) {
+        return decodeCatalogQrV1(payload);
+    }
+
+    return decodeCatalogQrV2(payload);
 }

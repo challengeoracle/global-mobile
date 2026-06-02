@@ -119,6 +119,7 @@ export function useCatalogScreen() {
             isConnected: network.canAttemptRemote,
             canSync: isSeller,
             pullCatalogAfterSync: true,
+            forceRetry: true,
             onComplete: async () => {
                 await catalog.loadLocalCatalog();
                 await refreshPendingCount();
@@ -163,6 +164,7 @@ export function useCatalogScreen() {
                     isConnected: network.canAttemptRemote,
                     canSync: isSeller,
                     pullCatalogAfterSync: true,
+                    forceRetry: true,
                 });
 
                 await catalog.loadLocalCatalog();
@@ -193,6 +195,7 @@ export function useCatalogScreen() {
             isConnected: network.canAttemptRemote,
             canSync: isSeller,
             pullCatalogAfterSync: true,
+            forceRetry: true,
         });
 
         await catalog.loadLocalCatalog();

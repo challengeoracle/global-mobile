@@ -108,7 +108,6 @@ export type CatalogSyncItemResponse = {
 };
 
 export type CatalogSyncRequest = {
-    deviceId: string;
     changes: CatalogSyncRequestItem[];
 };
 

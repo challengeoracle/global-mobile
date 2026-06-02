@@ -1,7 +1,6 @@
 import { createLocalOrderFromConfirmationQr } from "@/src/domains/order/repositories/order-repository";
 import { decodeOrderConfirmationQr } from "@/src/domains/order/utils/order-qr";
 import { QrScannerModal } from "@/src/shared/components/scanner/qr-scanner-modal";
-import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
 
 type Props = {
     visible: boolean;
@@ -22,11 +21,9 @@ export function OrderConfirmationScannerModal({ visible, onClose, onConfirmed }:
             onClose={onClose}
             onScan={async (data) => {
                 const payload = decodeOrderConfirmationQr(data);
-                const deviceId = await getOrCreateDeviceId();
 
                 await createLocalOrderFromConfirmationQr({
                     payload,
-                    customerDeviceId: deviceId,
                 });
 
                 await onConfirmed(payload.localOrderId);

@@ -149,6 +149,7 @@ function getReadyQueueQuery(tableName: "catalog_sync_queue" | "order_sync_queue"
         WHERE (
             status IN ('PENDING', 'SYNCING')
             OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+            OR (? = 1 AND status = 'REJECTED')
         )
           AND (
             owner_user_id = ?
@@ -294,14 +295,15 @@ export async function enqueueCatalogChange(change: CatalogSyncItem) {
     return operationId;
 }
 
-export async function getPendingCatalogChanges() {
+export async function getPendingCatalogChanges(forceRetry = false) {
     const context = await getLocalSessionContext();
 
     if (!context) {
         return [];
     }
 
-    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("catalog_sync_queue"), [now(), context.userId, context.storeId, context.storeId]);
+    const retryCutoff = forceRetry ? "9999-12-31T23:59:59.999Z" : now();
+    const rows = await db.getAllAsync<SyncQueueRow>(getReadyQueueQuery("catalog_sync_queue"), [retryCutoff, forceRetry ? 1 : 0, context.userId, context.storeId, context.storeId]);
     return rows.map(parseCatalogRow);
 }
 
@@ -406,13 +408,14 @@ export async function enqueueOrderSync(localOrderId: string, payload: OrderSyncR
     return localOrderId;
 }
 
-export async function getPendingOrderSyncQueue() {
+export async function getPendingOrderSyncQueue(forceRetry = false) {
     const context = await getLocalSessionContext();
 
     if (!context) {
         return [];
     }
 
+    const retryCutoff = forceRetry ? "9999-12-31T23:59:59.999Z" : now();
     const rows = await db.getAllAsync<SyncQueueRow>(
         `
         SELECT
@@ -435,13 +438,14 @@ export async function getPendingOrderSyncQueue() {
         WHERE (
             status IN ('PENDING', 'SYNCING')
             OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+            OR (? = 1 AND status = 'REJECTED')
         )
           AND owner_role = 'SELLER'
           AND ? IS NOT NULL
           AND owner_store_id = ?
         ORDER BY created_at ASC
         `,
-        [now(), context.storeId, context.storeId],
+        [retryCutoff, forceRetry ? 1 : 0, context.storeId, context.storeId],
     );
 
     return rows.map(parseOrderRow);

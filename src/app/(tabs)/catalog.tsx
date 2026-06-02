@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useColorScheme } from "nativewind";
-import { useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, InteractionManager, Pressable, ScrollView, Text, View } from "react-native";
 
 import { CatalogQrModal } from "@/src/domains/catalog/components/catalog-qr-modal";
 import { CatalogScannerModal } from "@/src/domains/catalog/components/catalog-scanner-modal";
@@ -32,6 +32,18 @@ type ActiveModal = "catalogQr" | "customerCatalog" | "productDetails" | "product
 
 const MODAL_TRANSITION_MS = 220;
 
+type CatalogQrData = {
+    qrValue: string | null;
+    categoryCount: number;
+    productCount: number;
+};
+
+const EMPTY_CATALOG_QR_DATA: CatalogQrData = {
+    qrValue: null,
+    categoryCount: 0,
+    productCount: 0,
+};
+
 export default function CatalogScreen() {
     const router = useRouter();
     const catalog = useCatalogScreen();
@@ -50,29 +62,19 @@ export default function CatalogScreen() {
     const [sellerConfirmationQrValue, setSellerConfirmationQrValue] = useState<string | null>(null);
     const [sellerConfirmationSynced, setSellerConfirmationSynced] = useState(false);
     const [sellerConfirmationMessage, setSellerConfirmationMessage] = useState<string | null>(null);
+    const [operationMessage, setOperationMessage] = useState<string | null>(null);
+    const [catalogQrData, setCatalogQrData] = useState<CatalogQrData>(EMPTY_CATALOG_QR_DATA);
+    const [catalogQrPreparing, setCatalogQrPreparing] = useState(false);
     const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const catalogQrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const catalogQrTaskRef = useRef<{ cancel: () => void } | null>(null);
 
-    const qrData = useMemo(() => {
-        if (!catalog.catalogStoreId || catalog.categories.length === 0) {
-            return {
-                qrValue: null,
-                categoryCount: 0,
-                productCount: 0,
-            };
-        }
-
-        const productCount = catalog.categories.reduce((total, category) => total + category.products.length, 0);
-        const payload = buildCatalogQrPayload({
-            storeId: catalog.catalogStoreId,
-            categories: catalog.categories,
-        });
-
-        return {
-            qrValue: encodeCatalogQr(payload),
-            categoryCount: catalog.categories.length,
-            productCount,
+    useEffect(() => {
+        return () => {
+            clearPendingTransition();
+            clearCatalogQrWork();
         };
-    }, [catalog.catalogStoreId, catalog.categories]);
+    }, []);
 
     function clearPendingTransition() {
         if (transitionTimerRef.current) {
@@ -81,8 +83,20 @@ export default function CatalogScreen() {
         }
     }
 
+    function clearCatalogQrWork() {
+        catalogQrTaskRef.current?.cancel();
+        catalogQrTaskRef.current = null;
+
+        if (catalogQrTimerRef.current) {
+            clearTimeout(catalogQrTimerRef.current);
+            catalogQrTimerRef.current = null;
+        }
+    }
+
     function closeActiveModal() {
         clearPendingTransition();
+        clearCatalogQrWork();
+        setCatalogQrPreparing(false);
         setActiveModal(null);
     }
 
@@ -110,6 +124,41 @@ export default function CatalogScreen() {
 
     function reopenCustomerCatalog() {
         transitionToModal("customerCatalog");
+    }
+
+    function prepareCatalogQrData(): CatalogQrData {
+        if (!catalog.catalogStoreId || catalog.categories.length === 0) {
+            return EMPTY_CATALOG_QR_DATA;
+        }
+
+        const activeCategories = catalog.categories.filter((category) => category.active);
+        const productCount = activeCategories.reduce((total, category) => total + category.products.filter((product) => product.active).length, 0);
+        const payload = buildCatalogQrPayload({
+            storeId: catalog.catalogStoreId,
+            categories: activeCategories,
+        });
+
+        return {
+            qrValue: encodeCatalogQr(payload),
+            categoryCount: activeCategories.length,
+            productCount,
+        };
+    }
+
+    function handleOpenCatalogQr() {
+        clearCatalogQrWork();
+        setCatalogQrData(EMPTY_CATALOG_QR_DATA);
+        setCatalogQrPreparing(true);
+        setActiveModal("catalogQr");
+
+        catalogQrTaskRef.current = InteractionManager.runAfterInteractions(() => {
+            catalogQrTimerRef.current = setTimeout(() => {
+                setCatalogQrData(prepareCatalogQrData());
+                setCatalogQrPreparing(false);
+                catalogQrTaskRef.current = null;
+                catalogQrTimerRef.current = null;
+            }, 60);
+        });
     }
 
     async function handleClearCustomerCatalog() {
@@ -142,6 +191,7 @@ export default function CatalogScreen() {
 
     async function handleClientScannedSellerConfirmation(_localOrderId: string) {
         clearPendingTransition();
+        setOperationMessage("Confirmação lida. Atualizando seu histórico local...");
         setOrderConfirmationScannerVisible(false);
         setActiveModal(null);
 
@@ -150,10 +200,12 @@ export default function CatalogScreen() {
 
         await orders.refreshPendingOrderCount();
         await catalog.loadLocalCatalog();
+        setOperationMessage("Pedido confirmado neste aparelho.");
         router.push("/(tabs)/orders");
     }
 
     async function openSellerConfirmationQr(localOrderId: string, synced: boolean) {
+        setOperationMessage("Preparando QR de confirmação para o cliente...");
         const confirmation = await buildOrderConfirmationPayloadFromLocal(localOrderId);
 
         if (!confirmation.storeId) {
@@ -167,7 +219,6 @@ export default function CatalogScreen() {
             storeId: confirmation.storeId,
             customerId: confirmation.customerId,
             sellerId: confirmation.sellerId,
-            sellerDeviceId: confirmation.sellerDeviceId,
             remoteOrderId: confirmation.remoteOrderId,
             confirmedAt: confirmation.confirmedAt,
             totalAmount: confirmation.totalAmount,
@@ -181,11 +232,13 @@ export default function CatalogScreen() {
         setSellerConfirmationQrValue(encodeOrderQr(qrPayload));
         setSellerConfirmationSynced(synced);
         setSellerConfirmationMessage(confirmation.message ?? null);
+        setOperationMessage(synced ? "Pedido sincronizado. Mostre a confirmação ao cliente." : "Pedido confirmado localmente. Mostre a confirmação ao cliente.");
         transitionToModal("sellerConfirmationQr");
     }
 
     async function handleOrderConfirmedBySeller(localOrderId: string) {
         setOrderScannerVisible(false);
+        setOperationMessage("Pedido lido. Salvando confirmação local...");
 
         await orders.refreshPendingOrderCount();
         await catalog.loadLocalCatalog();
@@ -193,6 +246,7 @@ export default function CatalogScreen() {
         let synced = false;
 
         try {
+            setOperationMessage("Tentando sincronizar: catálogo primeiro, depois pedido...");
             const syncResult = await orders.syncPendingOrders(false);
             synced = syncResult.ok && (syncResult.rejected ?? 0) === 0;
 
@@ -200,10 +254,6 @@ export default function CatalogScreen() {
             await catalog.loadLocalCatalog();
         } catch {
             synced = false;
-        }
-
-        if (!synced) {
-            return;
         }
 
         await openSellerConfirmationQr(localOrderId, synced);
@@ -214,6 +264,7 @@ export default function CatalogScreen() {
         setSellerConfirmationQrValue(null);
         setSellerConfirmationSynced(false);
         setSellerConfirmationMessage(null);
+        setOperationMessage(null);
     }
 
     if (catalog.loading) {
@@ -239,6 +290,12 @@ export default function CatalogScreen() {
                     onOpenCatalog={() => transitionToModal("customerCatalog")}
                     onClearCatalog={handleClearCustomerCatalog}
                 />
+
+                {operationMessage ? (
+                    <View className="px-6">
+                        <Text className="mt-3 rounded-2xl bg-primary/10 px-4 py-3 text-sm font-bold text-primary">{operationMessage}</Text>
+                    </View>
+                ) : null}
 
                 <CatalogScannerModal
                     visible={scannerVisible}
@@ -376,6 +433,7 @@ export default function CatalogScreen() {
                         onSubmitCategory={catalog.submitCategory}
                     />
 
+                    {operationMessage ? <Text className="mb-5 rounded-2xl bg-primary/10 px-4 py-3 text-sm font-bold text-primary">{operationMessage}</Text> : null}
                     {catalog.message || catalog.error ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{catalog.message || catalog.error}</Text> : null}
                     {orders.message ? <Text className="mb-5 rounded-2xl bg-muted px-4 py-3 text-sm font-bold text-muted-foreground">{orders.message}</Text> : null}
 
@@ -400,7 +458,7 @@ export default function CatalogScreen() {
                                 </View>
                             </Pressable>
 
-                            <Pressable onPress={() => transitionToModal("catalogQr")} className="min-h-14 min-w-[47%] flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3">
+                            <Pressable onPress={handleOpenCatalogQr} className="min-h-14 min-w-[47%] flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3">
                                 <Ionicons name="qr-code-outline" size={18} color={iconColor} />
                                 <View className="flex-1">
                                     <Text className="text-xs font-black uppercase tracking-[1px] text-card-foreground">QR do catálogo</Text>
@@ -438,7 +496,15 @@ export default function CatalogScreen() {
                 </View>
             </ScrollView>
 
-            <CatalogQrModal visible={activeModal === "catalogQr"} storeId={catalog.catalogStoreId} qrValue={qrData.qrValue} categoryCount={qrData.categoryCount} productCount={qrData.productCount} onClose={closeActiveModal} />
+            <CatalogQrModal
+                visible={activeModal === "catalogQr"}
+                storeId={catalog.catalogStoreId}
+                qrValue={catalogQrData.qrValue}
+                categoryCount={catalogQrData.categoryCount}
+                productCount={catalogQrData.productCount}
+                preparing={catalogQrPreparing}
+                onClose={closeActiveModal}
+            />
             <OrderScannerModal visible={orderScannerVisible} onClose={() => setOrderScannerVisible(false)} onConfirmed={handleOrderConfirmedBySeller} />
             <OrderConfirmationQrModal visible={activeModal === "sellerConfirmationQr"} qrValue={sellerConfirmationQrValue} synced={sellerConfirmationSynced} message={sellerConfirmationMessage} onClose={handleCloseSellerConfirmationQr} />
 

@@ -6,7 +6,6 @@ export type OrderQrPayload = {
     localOrderId: string;
     storeId: string;
     customerId?: string | null;
-    deviceId?: string | null;
     createdAt: string;
     totalAmount: number;
     items: OrderItemRequest[];
@@ -19,7 +18,6 @@ export type OrderConfirmationQrPayload = {
     storeId: string;
     customerId?: string | null;
     sellerId?: string | null;
-    sellerDeviceId?: string | null;
     remoteOrderId?: string | null;
     confirmedAt: string;
     totalAmount: number;
@@ -36,7 +34,6 @@ type CompactOrderQrPayload = {
     id: string;
     s: string;
     c?: string | null;
-    d?: string | null;
     at: string;
     total: number;
     items: {
@@ -53,7 +50,6 @@ type CompactOrderConfirmationQrPayload = {
     s: string;
     c?: string | null;
     seller?: string | null;
-    sd?: string | null;
     rid?: string | null;
     at: string;
     total: number;
@@ -75,7 +71,6 @@ export function buildOrderQrPayload(params: OrderQrPayload): CompactOrderQrPaylo
         id: params.localOrderId,
         s: params.storeId,
         c: params.customerId ?? null,
-        d: params.deviceId ?? null,
         at: params.createdAt,
         total: params.totalAmount,
         items: params.items.map((item) => ({
@@ -94,7 +89,6 @@ export function buildOrderConfirmationQrPayload(params: OrderConfirmationQrPaylo
         s: params.storeId,
         c: params.customerId ?? null,
         seller: params.sellerId ?? null,
-        sd: params.sellerDeviceId ?? null,
         rid: params.remoteOrderId ?? null,
         at: params.confirmedAt,
         total: params.totalAmount,
@@ -131,7 +125,6 @@ export function decodeOrderQr(value: string): OrderQrPayload {
         localOrderId: payload.id,
         storeId: payload.s,
         customerId: payload.c ?? null,
-        deviceId: payload.d ?? null,
         createdAt: payload.at,
         totalAmount: payload.total,
         items: payload.items.map((item) => ({
@@ -160,7 +153,6 @@ export function decodeOrderConfirmationQr(value: string): OrderConfirmationQrPay
         storeId: payload.s,
         customerId: payload.c ?? null,
         sellerId: payload.seller ?? null,
-        sellerDeviceId: payload.sd ?? null,
         remoteOrderId: payload.rid ?? null,
         confirmedAt: payload.at,
         totalAmount: payload.total,

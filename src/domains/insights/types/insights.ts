@@ -94,6 +94,47 @@ export type InsightAskResponse = {
     capabilities?: string[];
 };
 
+export type AnalyticsPeriod = "today" | "yesterday" | "week" | "month";
+
+export type AnalyticsPeriodSummaryResponse = {
+    role: UserRole;
+    period: string;
+    startDate: string;
+    endDate: string;
+    totalOrders: number;
+    paidOrders: number;
+    pendingPayments: number;
+    rejectedPayments: number;
+    totalAmount: number;
+    paidAmount: number;
+    pendingAmount: number;
+    rejectedAmount: number;
+    averageTicket: number;
+    topProductName: string | null;
+    topProductQuantity: number | null;
+    message: string | null;
+};
+
+export type AnalyticsChartPointResponse = {
+    date: string;
+    totalOrders: number;
+    paidOrders: number;
+    pendingOrders: number;
+    rejectedOrders: number;
+    totalAmount: number;
+    paidAmount: number;
+    pendingAmount: number;
+    rejectedAmount: number;
+};
+
+export type AnalyticsChartResponse = {
+    role: UserRole;
+    period: string;
+    totalOrders: number;
+    totalAmount: number;
+    points: AnalyticsChartPointResponse[];
+};
+
 export type InsightOverview = {
     greetingName: string;
     role: UserRole;
@@ -112,4 +153,10 @@ export type InsightOverview = {
     topProductName: string | null;
     topProductQuantity: number | null;
     message?: string | null;
+};
+
+export type InsightDashboard = {
+    overview: InsightOverview | null;
+    periodSummary: AnalyticsPeriodSummaryResponse | null;
+    chart: AnalyticsChartResponse | null;
 };

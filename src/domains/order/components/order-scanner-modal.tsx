@@ -2,7 +2,6 @@ import { useAuth } from "@/src/domains/auth/hooks/auth-context";
 import { createLocalOrderFromQr } from "@/src/domains/order/repositories/order-repository";
 import { decodeOrderQr } from "@/src/domains/order/utils/order-qr";
 import { QrScannerModal } from "@/src/shared/components/scanner/qr-scanner-modal";
-import { getOrCreateDeviceId } from "@/src/shared/lib/secure-storage";
 
 type Props = {
     visible: boolean;
@@ -32,12 +31,10 @@ export function OrderScannerModal({ visible, onClose, onConfirmed }: Props) {
                     throw new Error("Apenas vendedores podem confirmar pedidos.");
                 }
 
-                const deviceId = await getOrCreateDeviceId();
                 const payload = decodeOrderQr(data);
                 const created = await createLocalOrderFromQr({
                     payload,
                     sellerId: user.id,
-                    sellerDeviceId: deviceId,
                 });
 
                 await onConfirmed(created.localOrderId);
