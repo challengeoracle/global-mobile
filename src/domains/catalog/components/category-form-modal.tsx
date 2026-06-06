@@ -51,12 +51,12 @@ export function CategoryFormModal({ visible, mode, initialCategory, onClose, onS
             }
 
             if (name.trim().length > CATEGORY_NAME_MAX_LENGTH) {
-                setError("O nome da categoria pode ter no maximo 100 caracteres.");
+                setError("O nome da categoria pode ter no máximo 100 caracteres.");
                 return;
             }
 
             if (description.trim().length > CATEGORY_DESCRIPTION_MAX_LENGTH) {
-                setError("A descricao pode ter no maximo 255 caracteres.");
+                setError("A descrição pode ter no máximo 255 caracteres.");
                 return;
             }
 
@@ -84,9 +84,9 @@ export function CategoryFormModal({ visible, mode, initialCategory, onClose, onS
                     </View>
 
                     <View>
-                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descricao</Text>
+                        <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descrição</Text>
 
-                        <TextInput value={description} onChangeText={setDescription} maxLength={CATEGORY_DESCRIPTION_MAX_LENGTH} placeholder="Descricao curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                        <TextInput value={description} onChangeText={setDescription} maxLength={CATEGORY_DESCRIPTION_MAX_LENGTH} placeholder="Descrição curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                     </View>
 
                     {error ? <Text className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm font-bold text-red-500">{error}</Text> : null}

@@ -76,10 +76,10 @@ export function ProductFormModal({ visible, mode, categories, initialCategoryId,
 
             if (!categoryId) return setError("Selecione uma categoria.");
             if (!name.trim()) return setError("Informe o nome do produto.");
-            if (name.trim().length > PRODUCT_NAME_MAX_LENGTH) return setError("O nome do produto pode ter no maximo 120 caracteres.");
-            if (description.trim().length > PRODUCT_DESCRIPTION_MAX_LENGTH) return setError("A descricao pode ter no maximo 255 caracteres.");
-            if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) return setError("Informe um preco valido.");
-            if (!Number.isFinite(parsedStock) || parsedStock < 0) return setError("Informe um estoque valido.");
+            if (name.trim().length > PRODUCT_NAME_MAX_LENGTH) return setError("O nome do produto pode ter no máximo 120 caracteres.");
+            if (description.trim().length > PRODUCT_DESCRIPTION_MAX_LENGTH) return setError("A descrição pode ter no máximo 255 caracteres.");
+            if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) return setError("Informe um preço válido.");
+            if (!Number.isFinite(parsedStock) || parsedStock < 0) return setError("Informe um estoque válido.");
 
             await onSubmit({
                 categoryId,
@@ -121,14 +121,14 @@ export function ProductFormModal({ visible, mode, categories, initialCategoryId,
                         </View>
 
                         <View>
-                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descricao</Text>
+                            <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Descrição</Text>
 
-                            <TextInput value={description} onChangeText={setDescription} maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH} placeholder="Descricao curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
+                            <TextInput value={description} onChangeText={setDescription} maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH} placeholder="Descrição curta" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                         </View>
 
                         <View className="flex-row gap-3">
                             <View className="flex-1">
-                                <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preco</Text>
+                                <Text className="mb-2 text-xs font-bold uppercase tracking-[2px] text-muted-foreground">Preço</Text>
 
                                 <TextInput value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="19.90" placeholderTextColor={placeholderColor} style={{ color: inputColor }} className="h-14 rounded-2xl border border-border bg-card px-4 text-base" />
                             </View>

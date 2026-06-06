@@ -119,9 +119,11 @@ export function useInsights() {
             setError("");
             setSelectedPeriod(period);
 
+            const chartDays = user?.role === "CUSTOMER" ? 7 : period === "month" ? 30 : period === "week" ? 7 : 2;
+
             const [periodSummary, chart] = await Promise.all([
                 getMyPeriodSummary(period),
-                getMyChart(period === "month" ? 30 : period === "week" ? 7 : 2),
+                getMyChart(chartDays),
             ]);
 
             if (user?.role === "SELLER") {
