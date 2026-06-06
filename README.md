@@ -10,7 +10,7 @@ Aplicativo mobile do ecossistema OffPay, desenvolvido com Expo e React Native pa
 
 ## Vídeo Demonstrativo
 
-- URL: `COLOCAR_AQUI`
+- URL: `https://youtu.be/ZMsivlVeczc`
 
 ## Sobre o App
 
