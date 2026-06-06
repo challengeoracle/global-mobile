@@ -1,15 +1,28 @@
 {
   "cli": {
-    "version": ">= 16.0.0"
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_AUTH_API_URL": "https://app-offpay-auth-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_SALES_API_URL": "https://app-offpay-sales-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_PAYMENT_API_URL": "https://app-offpay-payment-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_ANALYTICS_API_URL": "https://app-offpay-analytics-rm559728.azurewebsites.net"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_AUTH_API_URL": "https://app-offpay-auth-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_SALES_API_URL": "https://app-offpay-sales-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_PAYMENT_API_URL": "https://app-offpay-payment-rm559728.azurewebsites.net",
+        "EXPO_PUBLIC_ANALYTICS_API_URL": "https://app-offpay-analytics-rm559728.azurewebsites.net"
+      },
       "android": {
         "buildType": "app-bundle"
       }
