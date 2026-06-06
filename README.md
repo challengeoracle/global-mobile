@@ -1,6 +1,6 @@
 # OffPay Mobile
 
-Aplicativo mobile do ecossistema OffPay, construído com Expo e React Native para sustentar a operação de vendedores e clientes mesmo quando a internet falha. O app prioriza persistência local, leitura e geração de QR Code, e sincronização posterior com os serviços centrais.
+Aplicativo mobile do ecossistema OffPay, construído com Expo e React Native para sustentar a operação de vendedores e clientes mesmo quando a internet falha. O app prioriza persistência local, leitura e geração de QR Code, sincronização posterior e consumo de microsserviços separados por domínio.
 
 ## Visão Geral
 
@@ -16,12 +16,12 @@ Na prática, isso transforma o celular em um terminal de venda resiliente. A ope
 
 ## Pontos Fortes
 
-- Operação offline-first: catálogo, pedidos e filas de sincronização ficam persistidos localmente em SQLite.
-- Fluxo de venda orientado por QR Code: compartilhamento de catálogo, criação de pedido e confirmação da venda funcionam de forma simples no balcão.
-- Sincronização por domínio: catálogo e pedidos possuem filas independentes, controle de tentativas, rejeições e reconciliação posterior.
-- Experiência adaptada por papel: o app muda a navegação e a home conforme o usuário é vendedor ou cliente.
-- Arquitetura modular: autenticação, catálogo, pedidos, carteira, sync e insights ficam separados por domínio, facilitando manutenção e evolução.
-- Integração preparada para microsserviços: cada contexto remoto aponta para uma API específica, sem acoplar tudo a um único backend.
+- Operação offline-first com persistência local em SQLite
+- Fluxo de venda orientado por QR Code
+- Sincronização posterior por domínio
+- Experiência adaptada para vendedor e cliente
+- Arquitetura modular por contexto de negócio
+- Integração preparada para microsserviços Java
 
 ## Stack
 
@@ -52,38 +52,45 @@ src/
     lib/                cliente HTTP, storage seguro e utilitários
 ```
 
-## Fluxo de Operação
+## Tela "Sobre o App"
 
-### Vendedor
+O requisito da entrega para exibir o hash do commit de referência já está atendido.
 
-Na tela de operação principal, o vendedor enxerga o estado local, acessa atalhos para registrar venda, comprar de outra loja, acompanhar pedidos e abrir a carteira. No catálogo, ele pode:
+- a tela está em [src/app/about.tsx](/c:/Users/mateu/Desktop/GS-26/global-mobile/src/app/about.tsx)
+- o acesso está disponível em Configurações > Sobre o App
+- o hash é injetado via `app.config.ts`, usando `git rev-parse --short HEAD`
 
-- criar e editar categorias e produtos localmente
-- ajustar estoque sem depender de resposta imediata do servidor
-- gerar um QR Code com o catálogo da loja
-- ler o QR Code de um pedido criado pelo cliente
-- confirmar a venda e disparar a sincronização quando houver internet
+Arquivo relacionado:
 
-### Cliente
+- [app.config.ts](/c:/Users/mateu/Desktop/GS-26/global-mobile/app.config.ts)
 
-O cliente pode importar o catálogo de uma loja por QR Code, montar o carrinho no aparelho, gerar o QR do pedido e apresentar esse código ao vendedor para confirmação. Depois, acompanha os pedidos e o histórico sincronizado.
+## Publicação do App
 
-## Persistência Local
+Para fechar o requisito de publicação:
 
-O app usa SQLite para garantir continuidade operacional. As migrações criam e mantêm tabelas locais para:
+1. Gerar a build do app com o commit de referência desejado.
+2. Publicar a build no Firebase App Distribution.
+3. Adicionar o e-mail do professor como tester no painel do Firebase.
+4. Validar que a tela "Sobre o App" mostra o hash do commit usado nessa build.
 
-- `categories`
-- `products`
-- `orders`
-- `order_items`
-- `catalog_sync_queue`
-- `order_sync_queue`
+Sugestão de checklist de entrega:
 
-Além do armazenamento dos dados de operação, o app mantém filas locais com status como `PENDING`, `SYNCING`, `SYNCED`, `FAILED` e `REJECTED`, permitindo retentativas automáticas e tratamento de conflitos.
+- build publicada no Firebase App Distribution
+- professor adicionado como tester
+- print da tela "Sobre o App" exibindo o commit
 
-## Integração com a API em `global-java-fresh`
+## URLs de Deploy
 
-O mobile conversa com os microsserviços Java por meio de quatro URLs públicas configuradas em ambiente:
+Essas são as URLs publicadas dos serviços Java:
+
+- Auth: `https://app-offpay-auth-rm559728.azurewebsites.net/swagger-ui/index.html`
+- Sales: `https://app-offpay-sales-rm559728.azurewebsites.net/swagger-ui/index.html`
+- Payment: `https://app-offpay-payment-rm559728.azurewebsites.net/swagger-ui/index.html`
+- Analytics: `https://app-offpay-analytics-rm559728.azurewebsites.net/swagger-ui/index.html`
+
+## Variáveis de Ambiente
+
+O mobile consome quatro URLs públicas configuradas por ambiente:
 
 ```env
 EXPO_PUBLIC_AUTH_API_URL=
@@ -94,75 +101,7 @@ EXPO_PUBLIC_ANALYTICS_API_URL=
 
 Essas URLs são consumidas em `src/shared/lib/api.ts`, que centraliza `fetch`, serialização JSON e envio do token JWT salvo com `Secure Store`.
 
-### 1. Autenticação
-
-O app usa o `signal-auth-service` da pasta `global-java-fresh` para:
-
-- `POST /auth/login`
-- `POST /auth/register/seller`
-- `POST /auth/register/customer`
-- `GET /auth/me`
-
-Na prática, isso cobre login, cadastro e recuperação do perfil autenticado. O fluxo offline-first não depende de device.
-
-### 2. Catálogo e Pedidos
-
-O `signal-sales-service` concentra a operação comercial do app:
-
-- `GET /catalog/me`
-- `GET /catalog/store/{storeId}`
-- `POST /catalog/sync`
-- `POST /order`
-- `POST /order/sync`
-- `GET /order/me/page`
-- `GET /order/me/sales/page`
-- `GET /order/me/purchases/page`
-- `GET /order/{id}`
-
-Esse é o núcleo do comportamento offline-first. O mobile registra alterações localmente e, quando a conexão volta, envia lotes de catálogo e pedidos para os endpoints de sincronização.
-
-### 3. Carteira e Pagamentos
-
-O `signal-payment-service` atende a parte financeira:
-
-- `GET /wallet/me`
-- `GET /wallet/personal/me`
-- `POST /wallet/deposit`
-- `POST /wallet/settle`
-- `GET /wallet/transactions/me/page`
-- `GET /wallet/transactions/personal/me/page`
-- `GET /payment/transactions/me/page`
-- `GET /payment/transactions/order/{orderId}`
-
-No app, isso sustenta saldo, histórico de movimentações e consulta de transações associadas aos pedidos.
-
-### 4. Analytics e IA
-
-O `signal-analytics-ai-service` complementa a operação com leitura gerencial:
-
-- `GET /analytics/me/summary`
-- `GET /analytics/seller/summary`
-- `GET /analytics/customer/summary`
-- `GET /analytics/seller/top-products`
-- `GET /analytics/customer/spending`
-- `POST /ai/insights/ask`
-
-Com isso, o mobile mostra resumos por perfil e permite enviar perguntas para a camada de insights com IA.
-
-## Como a Sincronização Funciona
-
-O motor de sincronização local:
-
-- separa catálogo e pedidos por escopo
-- evita execuções concorrentes
-- faz retentativas automáticas em falhas transitórias
-- marca rejeições quando o backend devolve inconsistências de negócio
-- atualiza o catálogo local após sync bem-sucedido
-- reconcilia IDs locais com IDs remotos quando necessário
-
-Esse comportamento está concentrado em [src/domains/sync/services/sync-engine.ts](/c:/Users/mateu/Desktop/GS-26/global-mobile/src/domains/sync/services/sync-engine.ts).
-
-## Executando o Projeto
+## Execução do Mobile
 
 ```bash
 npm install
@@ -178,22 +117,120 @@ npm run web
 npm run lint
 ```
 
-## Backend Relacionado
+## Backend Java Relacionado
 
-Para rodar a experiência completa, o mobile depende do backend em `../global-java-fresh`, organizado nestes serviços:
+O app conversa com os microsserviços do projeto Java:
 
 - `signal-auth-service`
 - `signal-sales-service`
 - `signal-payment-service`
 - `signal-analytics-ai-service`
 
-As portas documentadas no backend são:
+## Execução Local da API Java
 
-- Auth: `http://localhost:8081`
-- Sales: `http://localhost:8082`
-- Payment: `http://localhost:8083`
-- Analytics: `http://localhost:8084`
+O repositório Java deve ser executado como solução completa.
+
+### Pré-requisitos
+
+- Docker Desktop
+- Git
+- arquivo `.env` configurado
+
+### Passo a passo
+
+1. Clone o repositório:
+
+```bash
+git clone https://github.com/challengeoracle/global-java
+cd global-java
+```
+
+Na entrega existe um arquivo `.env` já configurado. Basta colocá-lo na raiz do projeto se esse for o fluxo adotado.
+
+2. Copie o arquivo de ambiente:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Ajuste pelo menos:
+
+- `JWT_SECRET`
+- `DB_URL`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `GROQ_API_KEY`
+
+4. Suba todos os serviços:
+
+```powershell
+docker compose up -d --build
+```
+
+5. Acompanhe os logs:
+
+```powershell
+docker compose logs -f
+```
+
+### Endpoints locais
+
+- Auth: `http://localhost:8081/swagger-ui/index.html`
+- Sales: `http://localhost:8082/swagger-ui/index.html`
+- Payment: `http://localhost:8083/swagger-ui/index.html`
+- Analytics AI: `http://localhost:8084/swagger-ui/index.html`
+- RabbitMQ Management: `http://localhost:15672`
+
+## Deploy Local com Docker
+
+Para desenvolvimento e testes rápidos, o caminho mais simples é usar o `docker compose` da raiz.
+
+Esse fluxo é indicado quando você quer:
+
+- validar o comportamento dos microsserviços localmente
+- testar variáveis de ambiente
+- conferir Swagger e integrações antes de publicar na nuvem
+
+Comando principal:
+
+```powershell
+docker compose up -d --build
+```
+
+Para derrubar o ambiente:
+
+```powershell
+docker compose down
+```
+
+## Banco de Dados da API Java
+
+O projeto Java foi preparado para dois cenários:
+
+- Oracle legado
+- Azure SQL para a entrega em nuvem
+
+As variáveis principais são:
+
+- `DB_URL`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `DB_DRIVER_CLASS_NAME`
+- `DB_DIALECT`
+- `FLYWAY_LOCATIONS`
+
+### Oracle
+
+- `DB_DRIVER_CLASS_NAME=oracle.jdbc.OracleDriver`
+- `DB_DIALECT=org.hibernate.dialect.OracleDialect`
+- `FLYWAY_LOCATIONS=classpath:db/migration`
+
+### Azure SQL
+
+- `DB_DRIVER_CLASS_NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver`
+- `DB_DIALECT=org.hibernate.dialect.SQLServerDialect`
+- `FLYWAY_LOCATIONS=classpath:db/migration-sqlserver`
 
 ## Resumo
 
-O valor deste app está em permitir que a operação continue acontecendo no mundo real, mesmo em contexto instável. Em vez de tratar o offline como exceção, o OffPay Mobile organiza catálogo, pedido, confirmação e sincronização como parte natural do fluxo de venda.
+O valor deste app está em permitir que a operação continue acontecendo no mundo real, mesmo em contexto instável. Em vez de tratar o offline como exceção, o OffPay Mobile organiza catálogo, pedido, confirmação, carteira, insights e sincronização como parte natural do fluxo de venda.
