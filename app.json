@@ -9,9 +9,11 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "br.com.offpay.globalmobile",
       "supportsTablet": true
     },
     "android": {
+      "package": "br.com.offpay.globalmobile",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -26,6 +28,9 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
     },
     "plugins": [
       "expo-router",
