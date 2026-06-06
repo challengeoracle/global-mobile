@@ -51,6 +51,14 @@ export type CustomerSummaryResponse = {
     pendingAmount: number;
     walletBalance: number;
     favoriteStoreId: string | null;
+    favoriteStoreName?: string | null;
+    lastPurchaseStoreId?: string | null;
+    lastPurchaseStoreName?: string | null;
+    lastPurchaseOrderId?: string | null;
+    lastPurchaseAmount?: number | null;
+    lastPurchasePaymentStatus?: string | null;
+    lastPurchaseAt?: string | null;
+    lastPurchaseProductNames?: string[];
     mostPurchasedProductName: string | null;
     mostPurchasedProductQuantity: number | null;
     message: string | null;
@@ -65,8 +73,23 @@ export type TopProductResponse = {
 
 export type CustomerSpendingByStoreResponse = {
     storeId: string;
+    storeName?: string | null;
     purchases: number;
     totalSpent: number;
+    lastPurchaseAt?: string | null;
+};
+
+export type RecentPurchaseResponse = {
+    orderId: string;
+    localOrderId: string | null;
+    storeId: string | null;
+    storeName?: string | null;
+    purchasedAt: string | null;
+    totalAmount: number;
+    paymentStatus: string | null;
+    orderStatus: string | null;
+    syncStatus: string | null;
+    productNames: string[];
 };
 
 export type CustomerSpendingResponse = {
@@ -79,6 +102,7 @@ export type CustomerSpendingResponse = {
     rejectedAmount: number;
     spendingByStore: CustomerSpendingByStoreResponse[];
     mostPurchasedProducts: TopProductResponse[];
+    recentPurchases?: RecentPurchaseResponse[];
     message: string | null;
 };
 
@@ -152,6 +176,14 @@ export type InsightOverview = {
     topProductLabel: string;
     topProductName: string | null;
     topProductQuantity: number | null;
+    favoriteStoreLabel?: string | null;
+    lastPurchaseStoreLabel?: string | null;
+    lastPurchaseOrderId?: string | null;
+    lastPurchaseAmount?: number | null;
+    lastPurchaseAt?: string | null;
+    lastPurchaseProductNames?: string[];
+    spendingByStore?: CustomerSpendingByStoreResponse[];
+    recentPurchases?: RecentPurchaseResponse[];
     message?: string | null;
 };
 
